@@ -111,3 +111,81 @@ export type MoodType = {
   label: string;
   prescription: string;
 };
+
+export interface UserProfile {
+  uid: string;
+  email: string;
+  docId: string; // e.g. u_vuongnguyet65_gmail_com
+  displayName?: string;
+  photoURL?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface Jar {
+  id: string;
+  name: string;
+  amount?: number;
+  color?: string;
+  category?: string;
+  createdAt?: string;
+}
+
+export interface Recurring {
+  id: string;
+  title: string;
+  amount?: number;
+  frequency?: string;
+  createdAt?: string;
+}
+
+export interface Transaction {
+  id: string;
+  title: string;
+  amount?: number;
+  type?: 'expense' | 'income' | 'bill' | 'other';
+  date?: string;
+  createdAt?: string;
+}
+
+export type AchievementTier = 'week' | 'month' | 'year';
+
+export interface AchievementReward {
+  title?: string;
+  badge?: string;
+  badgeIcon?: string;
+  themeId?: 'teal' | 'imperial-purple' | 'amber-gold' | 'dark-ink' | 'sakura-rose' | 'celestial-blue';
+  themeName?: string;
+  wallpaperId?: 'default' | 'tea-pavilion' | 'imperial-library' | 'bamboo-waterfall' | 'cyber-chamber';
+  wallpaperName?: string;
+  frameId?: 'default' | 'aura-cyan' | 'aura-gold' | 'aura-fire' | 'aura-dragon';
+  frameName?: string;
+}
+
+export interface Achievement {
+  id: string;
+  title: string;
+  subtitle: string;
+  tier: AchievementTier;
+  timeHorizonLabel: string;
+  badgeIcon: string;
+  badgeName: string;
+  description: string;
+  requirementText: string;
+  metricType: 'days' | 'tasks' | 'volume' | 'records' | 'pharmacy';
+  targetValue: number;
+  currentValue: number;
+  unlocked: boolean;
+  unlockedAt?: string;
+  rewards: AchievementReward;
+}
+
+export interface UserCustomization {
+  equippedTitle: string;
+  equippedBadge: string;
+  equippedTheme: 'teal' | 'imperial-purple' | 'amber-gold' | 'dark-ink' | 'sakura-rose' | 'celestial-blue';
+  equippedWallpaper: 'default' | 'tea-pavilion' | 'imperial-library' | 'bamboo-waterfall' | 'cyber-chamber';
+  equippedFrame: 'default' | 'aura-cyan' | 'aura-gold' | 'aura-fire' | 'aura-dragon';
+  customAccumulatedDays: number;
+}
+

@@ -104,33 +104,41 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 
   const completedTodayCount = tasks.filter((t) => t.done).length;
 
-  // Build weekly chart data (Thứ 2 -> Chủ Nhật)
+  // Build weekly chart data (Thứ 2 -> Chủ Nhật) purely from real sessions
   const weeklyChartData = useMemo(() => {
     const todayDay = new Date().getDay(); // 0 is Sunday, 1 is Monday...
     const baseWeek = [
-      { key: 'T2', name: 'Thứ 2', fullName: 'Thứ Hai', dayIndex: 1, baseMl: 65, status: 'Bắt đầu tuần êm dịu' },
-      { key: 'T3', name: 'Thứ 3', fullName: 'Thứ Ba', dayIndex: 2, baseMl: 85, status: 'Tiếp nhận tốt chữ Hán' },
-      { key: 'T4', name: 'Thứ 4', fullName: 'Thứ Tư', dayIndex: 3, baseMl: 110, status: 'Dòng chảy tập trung sâu' },
-      { key: 'T5', name: 'Thứ 5', fullName: 'Thứ Năm', dayIndex: 4, baseMl: 95, status: 'Ôn tập ngữ pháp thong thả' },
-      { key: 'T6', name: 'Thứ 6', fullName: 'Thứ Sáu', dayIndex: 5, baseMl: 140, status: 'Hưng phấn cuối tuần' },
-      { key: 'T7', name: 'Thứ 7', fullName: 'Thứ Bảy', dayIndex: 6, baseMl: 70, status: 'Tắm ngôn ngữ qua phim' },
-      { key: 'CN', name: 'Chủ Nhật', fullName: 'Chủ Nhật', dayIndex: 0, baseMl: 55, status: 'Dưỡng sức chuẩn bị tuần mới' },
+      { key: 'T2', name: 'Thứ 2', fullName: 'Thứ Hai', dayIndex: 1 },
+      { key: 'T3', name: 'Thứ 3', fullName: 'Thứ Ba', dayIndex: 2 },
+      { key: 'T4', name: 'Thứ 4', fullName: 'Thứ Tư', dayIndex: 3 },
+      { key: 'T5', name: 'Thứ 5', fullName: 'Thứ Năm', dayIndex: 4 },
+      { key: 'T6', name: 'Thứ 6', fullName: 'Thứ Sáu', dayIndex: 5 },
+      { key: 'T7', name: 'Thứ 7', fullName: 'Thứ Bảy', dayIndex: 6 },
+      { key: 'CN', name: 'Chủ Nhật', fullName: 'Chủ Nhật', dayIndex: 0 },
     ];
-
-    const sessionsTotal = sessions.reduce((acc, s) => acc + s.volumeMl, 0);
 
     return baseWeek.map((item) => {
       const isToday = item.dayIndex === todayDay;
+      // Calculate real volume accumulated from saved sessions for this day
+      const daySessionsVolume = sessions
+        .filter((s) => s.dayKey === item.key)
+        .reduce((sum, s) => sum + (s.volumeMl || 0), 0);
+
+      // Add live volume if currently dripping today
       const liveVolume = isToday ? currentVolumeMl : 0;
-      const extraFromSessions = isToday ? Math.min(sessionsTotal, 200) : 0;
-      const volumeMl = item.baseMl + liveVolume + extraFromSessions;
+      const volumeMl = daySessionsVolume + liveVolume;
       const minutes = Math.round(volumeMl / 5);
+
+      const status = volumeMl > 0 
+        ? `Đã nạp ${volumeMl}ml (~${minutes} phút)` 
+        : 'Chưa có dữ liệu nạp tri thức';
 
       return {
         ...item,
         volumeMl,
         minutes,
         isToday,
+        status,
       };
     });
   }, [sessions, currentVolumeMl]);
@@ -144,7 +152,8 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   }, [totalWeeklyVolume]);
 
   const peakDay = useMemo(() => {
-    return [...weeklyChartData].sort((a, b) => b.volumeMl - a.volumeMl)[0];
+    const sorted = [...weeklyChartData].sort((a, b) => b.volumeMl - a.volumeMl);
+    return sorted[0]?.volumeMl > 0 ? sorted[0] : null;
   }, [weeklyChartData]);
 
   // Custom Recharts Tooltip
@@ -659,8 +668,12 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               <Award className="w-3.5 h-3.5 text-amber-600" />
               Ngày đỉnh cao nhất
             </p>
-            <p className="text-xl font-extrabold text-amber-900 mt-1">{peakDay.name}</p>
-            <span className="text-[10px] text-amber-700 font-medium">{peakDay.volumeMl} ml tri thức</span>
+            <p className="text-xl font-extrabold text-amber-900 mt-1">
+              {peakDay ? peakDay.name : 'Chưa có'}
+            </p>
+            <span className="text-[10px] text-amber-700 font-medium">
+              {peakDay ? `${peakDay.volumeMl} ml tri thức` : 'Chưa có dữ liệu'}
+            </span>
           </div>
 
           <div className="p-3.5 rounded-2xl bg-emerald-50/60 border border-emerald-100">
@@ -668,13 +681,26 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               <TrendingUp className="w-3.5 h-3.5 text-emerald-600" />
               Đánh giá phác đồ
             </p>
-            <p className="text-sm font-bold text-emerald-900 mt-1">Hồi phục rất tốt 🌿</p>
-            <span className="text-[10px] text-emerald-700 font-medium">Không có áp lực Pomodoro</span>
+            <p className="text-sm font-bold text-emerald-900 mt-1">
+              {totalWeeklyVolume > 0 ? 'Hồi phục rất tốt 🌿' : 'Bắt đầu từ con số 0 🌿'}
+            </p>
+            <span className="text-[10px] text-emerald-700 font-medium">
+              {totalWeeklyVolume > 0 ? 'Không có áp lực Pomodoro' : 'Chưa ghi nhận ca truyền'}
+            </span>
           </div>
         </div>
 
         {/* Recharts Bar Chart Viewport */}
-        <div className="w-full h-64 sm:h-72 pt-2">
+        <div className="w-full h-64 sm:h-72 pt-2 relative">
+          {totalWeeklyVolume === 0 && (
+            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-white/75 backdrop-blur-[1px] rounded-2xl border border-dashed border-slate-200 p-6 text-center pointer-events-none">
+              <Droplets className="w-7 h-7 text-teal-400 mb-1.5" />
+              <p className="text-xs font-bold text-slate-700">Chưa có dữ liệu truyền dịch trong tuần này</p>
+              <p className="text-[11px] text-slate-400 mt-0.5 max-w-xs">
+                Bệnh nhân mới chưa có lịch sử nạp. Hãy bấm <strong>Bắt đầu truyền</strong> ở trên để nạp những ml tri thức đầu tiên!
+              </p>
+            </div>
+          )}
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={weeklyChartData} margin={{ top: 10, right: 10, left: -20, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
@@ -685,6 +711,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                 tick={{ fill: '#64748b', fontSize: 12, fontWeight: 500 }}
               />
               <YAxis 
+                domain={[0, Math.max(50, Math.max(...weeklyChartData.map(d => chartMetric === 'volume' ? d.volumeMl : d.minutes)))]}
                 tickLine={false} 
                 axisLine={{ stroke: '#cbd5e1' }}
                 tick={{ fill: '#94a3b8', fontSize: 11 }}

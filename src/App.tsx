@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Sidebar, MOODS } from './components/Sidebar';
 import { Header } from './components/Header';
 import { DashboardTab } from './components/DashboardTab';
@@ -6,8 +6,10 @@ import { PrescriptionsTab } from './components/PrescriptionsTab';
 import { MedicalNotesTab } from './components/MedicalNotesTab';
 import { PharmacyTab } from './components/PharmacyTab';
 import { AiDoctorTab } from './components/AiDoctorTab';
+import { AchievementsTab } from './components/AchievementsTab';
 import { SickLeaveModal } from './components/SickLeaveModal';
 import { MusicPlayerModal } from './components/MusicPlayerModal';
+import { AuthModal } from './components/AuthModal';
 import { 
   Task, 
   DripSession, 
@@ -20,63 +22,42 @@ import {
   DosageType, 
   TaskCategory, 
   PriorityLevel, 
-  MusicTrack 
+  MusicTrack,
+  UserProfile,
+  Jar,
+  Recurring,
+  Transaction,
+  Achievement,
+  UserCustomization
 } from './types';
 import { soundEngine } from './utils/audio';
+import { 
+  INITIAL_CUSTOMIZATION, 
+  computeAchievements, 
+  THEME_PALETTES, 
+  WALLPAPER_CONFIGS 
+} from './utils/achievements';
+import { 
+  auth, 
+  db, 
+  googleProvider, 
+  signInWithPopup, 
+  firebaseSignOut, 
+  getEmailDocId, 
+  testConnection 
+} from './firebase';
+import { onAuthStateChanged } from 'firebase/auth';
+import { 
+  doc, 
+  getDoc, 
+  setDoc, 
+  collection, 
+  getDocs, 
+  updateDoc 
+} from 'firebase/firestore';
 
-// Initial Defaults with rich priorities, documents, scheduled times and notes
-const DEFAULT_TASKS: Task[] = [
-  {
-    id: 1,
-    title: 'Nhai 5 chữ Hán chỉ cảm xúc (喜, 怒, 哀, 乐, 怕)',
-    dosage: 'Liều nhẹ (5 - 10 phút)',
-    category: 'Hán tự (Hanzi)',
-    priority: 'Bắt buộc uống (Khẩn cấp)',
-    scheduledTime: '08:30',
-    documentUrl: 'https://hanzii.net',
-    documentName: 'Từ điển Hanzii tra bộ Tâm & Hán tự',
-    notes: 'Chú ý bộ Tâm (忄) ở chữ 怕 (pà - sợ) và 怒 (nù - giận). Uống liều này vào đầu buổi sáng.',
-    done: false,
-    createdAt: 'Hôm nay',
-  },
-  {
-    id: 2,
-    title: 'Phân biệt bộ ba trợ từ kết cấu 的, 得, 地',
-    dosage: 'Liều vừa (20 - 30 phút)',
-    category: 'Ngữ pháp',
-    priority: 'Quan trọng (Uống trước)',
-    scheduledTime: '11:00',
-    documentUrl: 'https://resources.allsetlearning.com/chinese/grammar/',
-    documentName: 'Chinese Grammar Wiki (AllSet Learning)',
-    notes: 'Quy tắc vàng: 的 nối danh từ, 得 đứng sau động từ chỉ mức độ, 地 đứng trước động từ.',
-    done: false,
-    createdAt: 'Hôm nay',
-  },
-  {
-    id: 3,
-    title: 'Đọc diễn cảm 1 đoạn hội thoại ngắn tiếng Trung',
-    dosage: 'Liều vừa (20 - 30 phút)',
-    category: 'Khẩu ngữ',
-    priority: 'Bình thường',
-    scheduledTime: '15:00',
-    notes: 'Đọc to thành tiếng, không chú trọng ngữ pháp, thả lỏng cơ mặt.',
-    done: false,
-    createdAt: 'Hôm nay',
-  },
-  {
-    id: 4,
-    title: 'Tắm ngôn ngữ: Xem 1 clip ẩm thực trên Bilibili',
-    dosage: 'Liều vừa (20 - 30 phút)',
-    category: 'Luyện nghe',
-    priority: 'Tùy chọn / Thư giãn',
-    scheduledTime: '20:30',
-    documentUrl: 'https://www.bilibili.com',
-    documentName: 'Kênh Bilibili cuộc sống',
-    notes: 'Chỉ nghe ngữ điệu tự nhiên, không cần tra từ vựng.',
-    done: false,
-    createdAt: 'Hôm nay',
-  },
-];
+// Initial Defaults: Brand new patient starts with a clean slate from zero
+const DEFAULT_TASKS: Task[] = [];
 
 const DEFAULT_MUSIC_TRACKS: MusicTrack[] = [
   {
@@ -126,26 +107,7 @@ const DEFAULT_PHARMACY: PharmacyItem[] = [
     iconText: '📺',
     badge: 'Tắm ngôn ngữ thực tế',
     badgeColor: 'bg-cyan-50 text-cyan-600',
-    subItems: [
-      {
-        id: 'sub-bili-1',
-        title: 'Tập 1: 21 Thanh mẫu & Vận mẫu tiếng Trung (Phát âm chuẩn Bắc Kinh)',
-        url: 'https://www.bilibili.com/video/BV1xx411c7mD',
-        note: 'Đã xem đến 08:35 - Chú ý cách đặt đầu lưỡi của âm zh, ch, sh và các âm bật hơi p, t, k.',
-        timestampProgress: '08:35 / 18:20',
-        isCompleted: false,
-        linkedMedicalNoteTitle: 'Bệnh Án #Pinyin-ThanhMẫu',
-      },
-      {
-        id: 'sub-bili-2',
-        title: 'Vlog Đời Sống: Một Ngày Đi Chợ Bắc Kinh & Trả Giá Tiếng Trung',
-        url: 'https://www.bilibili.com/video/BV1yy411c8kE',
-        note: 'Lưu ý từ lóng: 多少钱 (bao nhiêu tiền), 便宜一点 (rẻ chút đi), 太贵了 (đắt quá).',
-        timestampProgress: '12:10 / 15:00',
-        isCompleted: true,
-        linkedMedicalNoteTitle: 'Bệnh Án #KhauNgu-DiCho',
-      },
-    ],
+    subItems: [],
   },
   {
     id: 'hanzii',
@@ -156,25 +118,7 @@ const DEFAULT_PHARMACY: PharmacyItem[] = [
     iconText: '汉',
     badge: 'Từ điển & Bộ thủ',
     badgeColor: 'bg-rose-50 text-rose-500',
-    subItems: [
-      {
-        id: 'sub-hanzii-1',
-        title: 'Bảng tra 214 Bộ Thủ Hán Tự & Quy Tắc Chiết Tự',
-        url: 'https://hanzii.net/radicals',
-        note: 'Đã học xong 8 bộ thủ gốc: Nhân, Thủy, Mộc, Tâm, Khẩu, Thủ, Miên, Ngôn.',
-        timestampProgress: '8/8 Bộ Gốc',
-        isCompleted: true,
-        linkedMedicalNoteTitle: 'Bệnh Án #8-Bo-Thu-Goc',
-      },
-      {
-        id: 'sub-hanzii-2',
-        title: 'Ngữ pháp HSK 3: So sánh 了解 (Liǎojiě) và 理解 (Lǐjiě)',
-        url: 'https://hanzii.net/grammar/hsk3',
-        note: 'Ghi chú quan trọng: 了解 là biết thông tin bên ngoài; 理解 là thấu hiểu tâm can.',
-        timestampProgress: 'Đang ôn',
-        isCompleted: false,
-      },
-    ],
+    subItems: [],
   },
   {
     id: 'grammar-wiki',
@@ -185,16 +129,7 @@ const DEFAULT_PHARMACY: PharmacyItem[] = [
     iconText: '法',
     badge: 'Ngữ pháp toàn diện',
     badgeColor: 'bg-indigo-50 text-indigo-600',
-    subItems: [
-      {
-        id: 'sub-gw-1',
-        title: 'Cấu trúc câu chữ Ba (把) trong tiếng Trung A2',
-        url: 'https://resources.allsetlearning.com/chinese/grammar/The_%22ba%22_sentence',
-        note: 'Công thức: S + 把 + O + V + Thành phần khác. Nhớ là vị ngữ phải xử lý tân ngữ.',
-        timestampProgress: 'Quy tắc 1/4',
-        isCompleted: false,
-      },
-    ],
+    subItems: [],
   },
   {
     id: 'bishun',
@@ -231,61 +166,33 @@ const DEFAULT_PHARMACY: PharmacyItem[] = [
   },
 ];
 
-const DEFAULT_MEDICAL_RECORDS: MedicalRecord[] = [
-  {
-    id: 'rec-1',
-    title: 'Phân biệt cụm 3 trợ từ kết cấu 的 (de), 得 (de), 地 (de)',
-    severity: 'Nghiêm trọng (Rất khó - Cần xử lý trước)',
-    category: 'Ngữ pháp',
-    content: `• 的 (Đích): Nối định ngữ với trung tâm ngữ (Định ngữ + 的 + Danh từ). Ví dụ: 我的书 (Sách của tôi), 漂亮的女孩 (Cô gái xinh đẹp).\n• 得 (Đắc): Đứng sau động từ hoặc tính từ để bổ nghĩa mức độ/khả năng (Động từ/Tính từ + 得 + Bổ ngữ). Ví dụ: 跑得快 (Chạy nhanh), 学得好 (Học giỏi).\n• 地 (Địa): Đứng trước động từ bổ nghĩa cách thức hành động (Phó từ/Tính từ + 地 + Động từ). Ví dụ: 慢慢地走 (Đi từ từ), 认真地听 (Chăm chú lắng nghe).`,
-    createdAt: 'Hôm nay',
-    doctorAssigned: true,
-  },
-  {
-    id: 'rec-2',
-    title: 'Cặp từ nhận thức dễ nhầm lẫn: 了解 (Liǎojiě) và 理解 (Lǐjiě)',
-    severity: 'Nghiêm trọng (Rất khó - Cần xử lý trước)',
-    category: 'Từ vựng',
-    content: `• 了解 (Liǎojiě): Biết rõ về tình hình bên ngoài, hoàn cảnh, sự kiện thực tế. Ví dụ: 我很了解他的情况 (Tôi nắm rất rõ tình hình của anh ấy).\n• 理解 (Lǐjiě): Thấu hiểu sâu sắc nội tâm, tâm tư, lý lẽ bên trong, đồng cảm với người khác. Ví dụ: 请理解我的苦衷 (Xin hãy thấu hiểu và thông cảm cho nỗi khổ tâm của tôi).\n🌿 Mẹo ghi nhớ: Nắm tình hình bên ngoài dùng 了解; thấu suốt tâm can bên trong dùng 理解!`,
-    createdAt: 'Hôm nay',
-    doctorAssigned: true,
-  },
-  {
-    id: 'rec-3',
-    title: 'Chiết tự chữa lành chữ Hán: 休 (xiū) và 安 (ān)',
-    severity: 'Trung bình (Cần theo dõi)',
-    category: 'Hán tự',
-    content: `• Chữ 休 (xiū - nghỉ ngơi): Bộ Nhân đứng (亻) tựa vào bộ Mộc (木 - cái cây). Con người tựa vào gốc cây mát rượi để nghỉ ngơi hồi phục sinh lực.\n• Chữ 安 (ān - an yên, bình an): Bộ Miên (宀 - mái nhà) che chở cho bộ Nữ (女 - người phụ nữ). Người phụ nữ bình yên và hạnh phúc dưới mái nhà ấm áp chính là chữ An!`,
-    createdAt: 'Hôm nay',
-    doctorAssigned: true,
-  },
-  {
-    id: 'rec-4',
-    title: 'Quy tắc biến điệu chữ 不 (bù) và chữ 一 (yī)',
-    severity: 'Nhẹ (Dễ - Đã ổn định)',
-    category: 'Phát âm',
-    content: `• Chữ 不 (bù - thanh 4): Khi đi trước từ mang thanh 4 thì biến điệu thành thanh 2 (bú). Ví dụ: 不是 (bú shì), 不要 (bú yào). Đi trước các thanh 1, 2, 3 giữ nguyên thanh 4.\n• Chữ 一 (yī - thanh 1): Đọc yī khi đếm số thứ tự. Trước từ mang thanh 4 biến thành thanh 2 (yí), ví dụ: 一样 (yí yàng). Trước từ thanh 1, 2, 3 biến thành thanh 4 (yì), ví dụ: 一起 (yì qǐ).`,
-    createdAt: 'Hôm nay',
-  },
-];
+const DEFAULT_MEDICAL_RECORDS: MedicalRecord[] = [];
 
-const INITIAL_NOTE = `# 📋 SỔ BỆNH ÁN & GHI CHÉP TRI THỨC - MIND CLINIC
----
-Chào mừng bạn đến với không gian tự do ghi chép! Không giới hạn, không chấm điểm.
-
-【Từ mới hôm nay】: 休息 (xiūxi)
-【Ý nghĩa】: Nghỉ ngơi, dưỡng sức
-【Chiết tự chữa lành】:
-• Chữ 休 (xiū): Gồm bộ Nhân đứng (亻- người) tựa vào bộ Mộc (木 - cái cây). Con người tựa vào gốc cây râm mát để nghỉ ngơi!
-• Chữ 息 (xī): Gồm chữ Tự (自 - cái mũi/bản thân) ở trên chữ Tâm (心 - trái tim). Hơi thở và trái tim điều hòa êm dịu = Nghỉ ngơi trọn vẹn.
-
-👉 *Ghi chú của bệnh nhân*: Hôm nay mình đã nạp tri thức rất nhẹ nhàng!`;
+const INITIAL_NOTE = '';
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState<string>('dashboard');
   const [currentMood, setCurrentMood] = useState<MoodType>(MOODS[1]);
   const [isSickLeaveOpen, setIsSickLeaveOpen] = useState<boolean>(false);
   const [isMusicModalOpen, setIsMusicModalOpen] = useState<boolean>(false);
+
+  // User Authentication & Firestore Data Separation States
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => {
+    try {
+      const saved = localStorage.getItem('mind_clinic_active_user');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
+  const [isLoadingUserData, setIsLoadingUserData] = useState<boolean>(false);
+  const isDataLoadedRef = useRef<boolean>(false);
+
+  // Subcollections for Budget Jars, Recurring Transactions, and Bills
+  const [jars, setJars] = useState<Jar[]>([]);
+  const [recurring, setRecurring] = useState<Recurring[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
 
   // Flow-time Accumulator States
   const [flowSeconds, setFlowSeconds] = useState<number>(0);
@@ -312,13 +219,25 @@ export default function App() {
   const [isRainPlaying, setIsRainPlaying] = useState<boolean>(false);
   const [isMuted, setIsMuted] = useState<boolean>(false);
 
-  // Persistent States
+  // Persistent States - Clean slate for brand new patient
   const [tasks, setTasks] = useState<Task[]>(() => {
     try {
       const saved = localStorage.getItem('mind_clinic_tasks');
-      return saved ? JSON.parse(saved) : DEFAULT_TASKS;
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          // If only old mock data existed, reset to clean 0
+          const hasOldMock = parsed.some((t: any) => t.title?.includes('Nhai 5 chữ Hán'));
+          if (hasOldMock) {
+            localStorage.removeItem('mind_clinic_tasks');
+            return [];
+          }
+          return parsed;
+        }
+      }
+      return [];
     } catch {
-      return DEFAULT_TASKS;
+      return [];
     }
   });
 
@@ -334,28 +253,55 @@ export default function App() {
   const [notes, setNotes] = useState<string>(() => {
     try {
       const saved = localStorage.getItem('mind_clinic_notes');
-      return saved !== null ? saved : INITIAL_NOTE;
+      if (saved && (saved.includes('休息 (xiūxi)') || saved.includes('Chào mừng bạn đến với không gian tự do ghi chép'))) {
+        localStorage.removeItem('mind_clinic_notes');
+        return '';
+      }
+      return saved !== null ? saved : '';
     } catch {
-      return INITIAL_NOTE;
+      return '';
     }
   });
 
   const [pharmacyItems, setPharmacyItems] = useState<PharmacyItem[]>(() => {
     try {
       const saved = localStorage.getItem('mind_clinic_pharmacy');
-      return saved ? JSON.parse(saved) : DEFAULT_PHARMACY;
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // Keep base reference websites, clean any demo sub-items
+          return parsed.map((item: PharmacyItem) => ({
+            ...item,
+            subItems: (item.subItems || []).filter(
+              (s) => !s.id.startsWith('sub-bili-') && !s.id.startsWith('sub-hanzii-') && !s.id.startsWith('sub-gw-')
+            ),
+          }));
+        }
+      }
+      return DEFAULT_PHARMACY;
     } catch {
       return DEFAULT_PHARMACY;
     }
   });
 
-  // Medical Records State (Hồ sơ & Bệnh án có phân loại độ khó / nghiêm trọng)
+  // Medical Records State (Clean slate for new patient)
   const [medicalRecords, setMedicalRecords] = useState<MedicalRecord[]>(() => {
     try {
       const saved = localStorage.getItem('mind_clinic_medical_records');
-      return saved ? JSON.parse(saved) : DEFAULT_MEDICAL_RECORDS;
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          const hasOldMock = parsed.some((r: any) => r.id === 'rec-1' || r.title?.includes('Phân biệt cụm 3 trợ từ'));
+          if (hasOldMock) {
+            localStorage.removeItem('mind_clinic_medical_records');
+            return [];
+          }
+          return parsed;
+        }
+      }
+      return [];
     } catch {
-      return DEFAULT_MEDICAL_RECORDS;
+      return [];
     }
   });
 
@@ -379,6 +325,276 @@ export default function App() {
     ];
   });
   const [isDoctorLoading, setIsDoctorLoading] = useState<boolean>(false);
+
+  // User Customization & Achievements System State
+  const [customization, setCustomization] = useState<UserCustomization>(() => {
+    try {
+      const saved = localStorage.getItem('mind_clinic_customization');
+      return saved ? JSON.parse(saved) : INITIAL_CUSTOMIZATION;
+    } catch {
+      return INITIAL_CUSTOMIZATION;
+    }
+  });
+
+  const [savedUnlockedMap, setSavedUnlockedMap] = useState<Record<string, string>>(() => {
+    try {
+      const saved = localStorage.getItem('mind_clinic_unlocked_achievements');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  // Calculate achievements based on user activities and time horizons
+  const achievements: Achievement[] = useMemo(() => {
+    return computeAchievements(
+      tasks,
+      sessions,
+      medicalRecords,
+      pharmacyItems,
+      customization.customAccumulatedDays,
+      savedUnlockedMap
+    );
+  }, [tasks, sessions, medicalRecords, pharmacyItems, customization.customAccumulatedDays, savedUnlockedMap]);
+
+  // Track new achievements unlocked and store timestamp
+  useEffect(() => {
+    let hasNewUnlock = false;
+    const updatedMap = { ...savedUnlockedMap };
+    achievements.forEach((ach) => {
+      if (ach.unlocked && !updatedMap[ach.id]) {
+        updatedMap[ach.id] = new Date().toLocaleDateString('vi-VN');
+        hasNewUnlock = true;
+      }
+    });
+    if (hasNewUnlock) {
+      setSavedUnlockedMap(updatedMap);
+      localStorage.setItem('mind_clinic_unlocked_achievements', JSON.stringify(updatedMap));
+      soundEngine.playSuccessChime();
+    }
+  }, [achievements]);
+
+  /**
+   * Safe Loader: Fetch all subcollections and document fields from Firestore
+   * TUYỆT ĐỐI KHÔNG GHI ĐÈ (OVERWRITE) DỮ LIỆU RỖNG LÊN DOCUMENT CŨ!
+   */
+  const loadUserDataIntoState = async (docId: string, docData: any) => {
+    setIsLoadingUserData(true);
+    try {
+      // Fetch all subcollections in parallel
+      const [jarsSnap, recSnap, txSnap, tasksSnap, sessSnap, medSnap, pharmSnap] = await Promise.all([
+        getDocs(collection(db, 'users', docId, 'jars')).catch(() => null),
+        getDocs(collection(db, 'users', docId, 'recurring')).catch(() => null),
+        getDocs(collection(db, 'users', docId, 'transactions')).catch(() => null),
+        getDocs(collection(db, 'users', docId, 'tasks')).catch(() => null),
+        getDocs(collection(db, 'users', docId, 'sessions')).catch(() => null),
+        getDocs(collection(db, 'users', docId, 'medicalRecords')).catch(() => null),
+        getDocs(collection(db, 'users', docId, 'pharmacy')).catch(() => null),
+      ]);
+
+      // Jars (Hũ ngân sách / mục tiêu)
+      if (jarsSnap && !jarsSnap.empty) {
+        setJars(jarsSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Jar)));
+      } else if (Array.isArray(docData.jars)) {
+        setJars(docData.jars);
+      } else {
+        setJars([]);
+      }
+
+      // Recurring (Lặp định kỳ)
+      if (recSnap && !recSnap.empty) {
+        setRecurring(recSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Recurring)));
+      } else if (Array.isArray(docData.recurring)) {
+        setRecurring(docData.recurring);
+      } else {
+        setRecurring([]);
+      }
+
+      // Transactions (Giao dịch / Hóa đơn)
+      if (txSnap && !txSnap.empty) {
+        setTransactions(txSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Transaction)));
+      } else if (Array.isArray(docData.transactions)) {
+        setTransactions(docData.transactions);
+      } else {
+        setTransactions([]);
+      }
+
+      // Tasks / Prescriptions (Đơn thuốc)
+      if (tasksSnap && !tasksSnap.empty) {
+        const loaded = tasksSnap.docs.map((d) => ({ id: Number(d.id) || Date.now(), ...d.data() } as Task));
+        setTasks(loaded.filter((t) => !t.title?.includes('Nhai 5 chữ Hán')));
+      } else if (Array.isArray(docData.tasks)) {
+        setTasks(docData.tasks.filter((t: any) => !t.title?.includes('Nhai 5 chữ Hán')));
+      } else {
+        setTasks([]);
+      }
+
+      // Sessions (Dung tích tri thức đã nạp)
+      if (sessSnap && !sessSnap.empty) {
+        setSessions(sessSnap.docs.map((d) => ({ id: Number(d.id) || Date.now(), ...d.data() } as DripSession)));
+      } else if (Array.isArray(docData.sessions)) {
+        setSessions(docData.sessions);
+      } else {
+        setSessions([]);
+      }
+
+      // Medical Records (Hồ sơ & Bệnh án)
+      if (medSnap && !medSnap.empty) {
+        const loaded = medSnap.docs.map((d) => ({ id: d.id, ...d.data() } as MedicalRecord));
+        setMedicalRecords(loaded.filter((r) => r.id !== 'rec-1' && !r.title?.includes('Phân biệt cụm 3 trợ từ')));
+      } else if (Array.isArray(docData.medicalRecords)) {
+        setMedicalRecords(docData.medicalRecords.filter((r: any) => r.id !== 'rec-1' && !r.title?.includes('Phân biệt cụm 3 trợ từ')));
+      } else {
+        setMedicalRecords([]);
+      }
+
+      // Pharmacy (Kho Dược - Giữ các link website có sẵn trong tủ thuốc)
+      if (pharmSnap && !pharmSnap.empty) {
+        setPharmacyItems(pharmSnap.docs.map((d) => ({ id: d.id, ...d.data() } as PharmacyItem)));
+      } else if (Array.isArray(docData.pharmacyItems) && docData.pharmacyItems.length > 0) {
+        setPharmacyItems(docData.pharmacyItems.map((item: PharmacyItem) => ({
+          ...item,
+          subItems: (item.subItems || []).filter(
+            (s) => !s.id.startsWith('sub-bili-') && !s.id.startsWith('sub-hanzii-') && !s.id.startsWith('sub-gw-')
+          ),
+        })));
+      } else {
+        setPharmacyItems(DEFAULT_PHARMACY);
+      }
+
+      // Notes (Sổ bệnh án)
+      if (typeof docData.notes === 'string') {
+        if (docData.notes.includes('休息 (xiūxi)') || docData.notes.includes('Chào mừng bạn đến với không gian tự do ghi chép')) {
+          setNotes('');
+        } else {
+          setNotes(docData.notes);
+        }
+      } else {
+        setNotes('');
+      }
+
+      // Customization & Achievements
+      if (docData.customization) {
+        setCustomization(docData.customization);
+      }
+      if (docData.unlockedAchievements) {
+        setSavedUnlockedMap(docData.unlockedAchievements);
+      }
+
+      // Set flag so future changes can sync safely
+      isDataLoadedRef.current = true;
+    } catch (err) {
+      console.error('Lỗi khi nạp dữ liệu cũ của user từ Firestore:', err);
+    } finally {
+      setIsLoadingUserData(false);
+    }
+  };
+
+  // Test Firestore connection on app mount
+  useEffect(() => {
+    testConnection();
+  }, []);
+
+  // Listen to onAuthStateChanged: Fetch exact user document without overwrite
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        const userEmail = firebaseUser.email || firebaseUser.uid;
+        const docId = getEmailDocId(userEmail);
+        const userDocRef = doc(db, 'users', docId);
+
+        try {
+          const userDocSnap = await getDoc(userDocRef);
+
+          if (userDocSnap.exists()) {
+            // Document ALREADY EXISTS: Fetch existing subcollections and data
+            // TUYỆT ĐỐI KHÔNG GHI ĐÈ DỮ LIỆU RỖNG BAN ĐẦU!
+            const data = userDocSnap.data();
+            const profile: UserProfile = {
+              uid: firebaseUser.uid,
+              email: userEmail,
+              docId,
+              displayName: firebaseUser.displayName || data.displayName || userEmail.split('@')[0],
+              photoURL: firebaseUser.photoURL || data.photoURL || '',
+              createdAt: data.createdAt,
+              updatedAt: data.updatedAt,
+            };
+            setCurrentUser(profile);
+            localStorage.setItem('mind_clinic_active_user', JSON.stringify(profile));
+            await loadUserDataIntoState(docId, data);
+          } else {
+            // First time login for this user: initialize brand new document
+            const newProfile: UserProfile = {
+              uid: firebaseUser.uid,
+              email: userEmail,
+              docId,
+              displayName: firebaseUser.displayName || userEmail.split('@')[0],
+              photoURL: firebaseUser.photoURL || '',
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            };
+            await setDoc(userDocRef, {
+              ...newProfile,
+              notes: INITIAL_NOTE,
+              tasks: DEFAULT_TASKS,
+              medicalRecords: DEFAULT_MEDICAL_RECORDS,
+              pharmacyItems: DEFAULT_PHARMACY,
+              customization: INITIAL_CUSTOMIZATION,
+              unlockedAchievements: {},
+              jars: [],
+              recurring: [],
+              transactions: [],
+            });
+            setCurrentUser(newProfile);
+            localStorage.setItem('mind_clinic_active_user', JSON.stringify(newProfile));
+            setTasks(DEFAULT_TASKS);
+            setMedicalRecords(DEFAULT_MEDICAL_RECORDS);
+            setPharmacyItems(DEFAULT_PHARMACY);
+            setNotes(INITIAL_NOTE);
+            setCustomization(INITIAL_CUSTOMIZATION);
+            setSavedUnlockedMap({});
+            setSessions([]);
+            setJars([]);
+            setRecurring([]);
+            setTransactions([]);
+            isDataLoadedRef.current = true;
+          }
+        } catch (error) {
+          console.error('Error in onAuthStateChanged user fetching:', error);
+        }
+      } else {
+        // Not signed in via Firebase Auth
+        const savedUser = localStorage.getItem('mind_clinic_active_user');
+        if (!savedUser) {
+          setCurrentUser(null);
+          isDataLoadedRef.current = false;
+        }
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Safe Firestore Auto-Sync (Only updates when currentUser exists and data has finished loading)
+  useEffect(() => {
+    if (!currentUser || !isDataLoadedRef.current) return;
+    const userRef = doc(db, 'users', currentUser.docId);
+    updateDoc(userRef, {
+      tasks,
+      sessions,
+      notes,
+      medicalRecords,
+      pharmacyItems,
+      customization,
+      unlockedAchievements: savedUnlockedMap,
+      jars,
+      recurring,
+      transactions,
+      updatedAt: new Date().toISOString(),
+    }).catch((err) => {
+      console.warn('Auto-sync to Firestore user document:', err);
+    });
+  }, [tasks, sessions, notes, medicalRecords, pharmacyItems, customization, savedUnlockedMap, jars, recurring, transactions, currentUser]);
 
   // Sync to LocalStorage
   useEffect(() => {
@@ -746,6 +962,115 @@ export default function App() {
     localStorage.removeItem('mind_clinic_api_linked');
   };
 
+  // User Authentication Handlers
+  const handleGoogleSignIn = async () => {
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (err: any) {
+      console.error('Google Sign In failed:', err);
+      throw err;
+    }
+  };
+
+  const handleEmailSignIn = async (email: string, displayName?: string) => {
+    const docId = getEmailDocId(email);
+    const userDocRef = doc(db, 'users', docId);
+
+    try {
+      const userDocSnap = await getDoc(userDocRef);
+
+      if (userDocSnap.exists()) {
+        const data = userDocSnap.data();
+        const profile: UserProfile = {
+          uid: data.uid || ('email_' + docId),
+          email,
+          docId,
+          displayName: displayName || data.displayName || email.split('@')[0],
+          photoURL: data.photoURL || '',
+          createdAt: data.createdAt,
+          updatedAt: data.updatedAt,
+        };
+        setCurrentUser(profile);
+        localStorage.setItem('mind_clinic_active_user', JSON.stringify(profile));
+        await loadUserDataIntoState(docId, data);
+      } else {
+        const newProfile: UserProfile = {
+          uid: 'email_' + docId,
+          email,
+          docId,
+          displayName: displayName || email.split('@')[0],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        await setDoc(userDocRef, {
+          ...newProfile,
+          notes: INITIAL_NOTE,
+          tasks: DEFAULT_TASKS,
+          medicalRecords: DEFAULT_MEDICAL_RECORDS,
+          pharmacyItems: DEFAULT_PHARMACY,
+          customization: INITIAL_CUSTOMIZATION,
+          unlockedAchievements: {},
+          jars: [],
+          recurring: [],
+          transactions: [],
+        });
+        setCurrentUser(newProfile);
+        localStorage.setItem('mind_clinic_active_user', JSON.stringify(newProfile));
+        setTasks(DEFAULT_TASKS);
+        setMedicalRecords(DEFAULT_MEDICAL_RECORDS);
+        setPharmacyItems(DEFAULT_PHARMACY);
+        setNotes(INITIAL_NOTE);
+        setCustomization(INITIAL_CUSTOMIZATION);
+        setSavedUnlockedMap({});
+        setSessions([]);
+        setJars([]);
+        setRecurring([]);
+        setTransactions([]);
+        isDataLoadedRef.current = true;
+      }
+    } catch (err) {
+      console.error('Error signing in with email:', err);
+      throw err;
+    }
+  };
+
+  const handleSignOut = async () => {
+    await firebaseSignOut(auth).catch(() => {});
+    setCurrentUser(null);
+    localStorage.removeItem('mind_clinic_active_user');
+    isDataLoadedRef.current = false;
+    // Reset state to initial clean defaults for the next user
+    setTasks(DEFAULT_TASKS);
+    setMedicalRecords(DEFAULT_MEDICAL_RECORDS);
+    setPharmacyItems(DEFAULT_PHARMACY);
+    setNotes(INITIAL_NOTE);
+    setCustomization(INITIAL_CUSTOMIZATION);
+    setSavedUnlockedMap({});
+    setSessions([]);
+    setJars([]);
+    setRecurring([]);
+    setTransactions([]);
+  };
+
+  // Customization & Achievement handlers
+  const handleUpdateCustomization = (updates: Partial<UserCustomization>) => {
+    setCustomization((prev) => {
+      const next = { ...prev, ...updates };
+      localStorage.setItem('mind_clinic_customization', JSON.stringify(next));
+      if (currentUser && isDataLoadedRef.current) {
+        updateDoc(doc(db, 'users', currentUser.docId), {
+          customization: next,
+          updatedAt: new Date().toISOString(),
+        }).catch(() => {});
+      }
+      return next;
+    });
+  };
+
+  const handleManualAdjustDays = (days: number) => {
+    handleUpdateCustomization({ customAccumulatedDays: days });
+  };
+
   // AI Doctor Message Sender
   const handleSendDoctorMessage = async (messageText: string) => {
     const timeStr = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
@@ -829,8 +1154,11 @@ export default function App() {
 
   const activeTasksCount = tasks.filter((t) => !t.done).length;
 
+  const currentTheme = THEME_PALETTES[customization.equippedTheme] || THEME_PALETTES.teal;
+  const currentWallpaper = WALLPAPER_CONFIGS[customization.equippedWallpaper] || WALLPAPER_CONFIGS.default;
+
   return (
-    <div className="text-slate-700 min-h-screen flex flex-col md:flex-row bg-[#f6fbf9]">
+    <div className={`text-slate-700 min-h-screen flex flex-col md:flex-row ${currentTheme.bgGradClass} transition-colors duration-500`}>
       {/* Background HTML5 Audio Element for Music Tracks */}
       {currentTrack && (
         <audio
@@ -853,15 +1181,26 @@ export default function App() {
         isMuted={isMuted}
         onToggleMute={handleToggleMute}
         activeTasksCount={activeTasksCount}
+        currentUser={currentUser}
+        onOpenAuthModal={() => setIsAuthModalOpen(true)}
+        customization={customization}
       />
 
       {/* MAIN VIEWPORT */}
-      <main className="flex-1 flex flex-col overflow-hidden min-h-screen">
+      <main 
+        className={`flex-1 flex flex-col overflow-hidden min-h-screen ${currentWallpaper.bgClass} transition-all duration-500`}
+        style={currentWallpaper.patternOverlay ? { backgroundImage: currentWallpaper.patternOverlay } : undefined}
+      >
         {/* Top Header */}
         <Header
           onOpenSickLeave={() => setIsSickLeaveOpen(true)}
           isFlowing={isFlowing}
           flowSeconds={flowSeconds}
+          currentUser={currentUser}
+          onOpenAuthModal={() => setIsAuthModalOpen(true)}
+          onSignOut={handleSignOut}
+          customization={customization}
+          onNavigateToAchievements={() => setCurrentTab('achievements')}
         />
 
         {/* Content Tabs Container */}
@@ -938,6 +1277,16 @@ export default function App() {
               onNavigateToMedicalNotes={() => setCurrentTab('medical-notes')}
             />
           )}
+
+          {currentTab === 'achievements' && (
+            <AchievementsTab
+              achievements={achievements}
+              customization={customization}
+              onUpdateCustomization={handleUpdateCustomization}
+              currentUser={currentUser}
+              onManualAdjustDays={handleManualAdjustDays}
+            />
+          )}
         </div>
       </main>
 
@@ -959,6 +1308,16 @@ export default function App() {
         onDeleteTrack={handleDeleteMusicTrack}
         isPlaying={isPlayingMusic}
         onTogglePlay={handleTogglePlayMusic}
+      />
+
+      {/* User Authentication & Account Separation Modal */}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        currentUser={currentUser}
+        onGoogleSignIn={handleGoogleSignIn}
+        onEmailSignIn={handleEmailSignIn}
+        onSignOut={handleSignOut}
       />
     </div>
   );

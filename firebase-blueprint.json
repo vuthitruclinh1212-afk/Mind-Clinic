@@ -1,0 +1,145 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile document keyed by sanitized email",
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "description": "Email address of the user"
+        },
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Display name of the user"
+        },
+        "photoURL": {
+          "type": "string",
+          "description": "Avatar photo URL"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "ISO timestamp of user creation"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "ISO timestamp of last update"
+        }
+      },
+      "required": ["email", "uid"]
+    },
+    "Jar": {
+      "title": "Jar",
+      "description": "Budget jar or knowledge accumulation jar",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "amount": { "type": "number" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "name"]
+    },
+    "Recurring": {
+      "title": "Recurring",
+      "description": "Recurring transaction or study schedule",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "amount": { "type": "number" },
+        "frequency": { "type": "string" }
+      },
+      "required": ["id", "title"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Transaction or bill item",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "amount": { "type": "number" },
+        "type": { "type": "string" },
+        "date": { "type": "string" }
+      },
+      "required": ["id", "title"]
+    },
+    "Task": {
+      "title": "Task",
+      "description": "Prescription study task",
+      "type": "object",
+      "properties": {
+        "id": { "type": "number" },
+        "title": { "type": "string" },
+        "dosage": { "type": "string" },
+        "category": { "type": "string" },
+        "priority": { "type": "string" },
+        "done": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "title", "done"]
+    },
+    "DripSession": {
+      "title": "DripSession",
+      "description": "Flow-time accumulation session",
+      "type": "object",
+      "properties": {
+        "id": { "type": "number" },
+        "startTime": { "type": "string" },
+        "durationSeconds": { "type": "number" },
+        "volumeMl": { "type": "number" },
+        "mood": { "type": "string" }
+      },
+      "required": ["id", "durationSeconds", "volumeMl"]
+    },
+    "MedicalRecord": {
+      "title": "MedicalRecord",
+      "description": "Medical diagnosis record with severity evaluation",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "severity": { "type": "string" },
+        "category": { "type": "string" },
+        "content": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "title", "severity", "content"]
+    }
+  },
+  "firestore": {
+    "/users/{userDocId}": {
+      "schema": "User",
+      "description": "User documents keyed by email (e.g. u_name_gmail_com)"
+    },
+    "/users/{userDocId}/jars/{jarId}": {
+      "schema": "Jar",
+      "description": "User jars subcollection"
+    },
+    "/users/{userDocId}/recurring/{recurringId}": {
+      "schema": "Recurring",
+      "description": "User recurring transactions/schedules subcollection"
+    },
+    "/users/{userDocId}/transactions/{transactionId}": {
+      "schema": "Transaction",
+      "description": "User transactions/bills subcollection"
+    },
+    "/users/{userDocId}/tasks/{taskId}": {
+      "schema": "Task",
+      "description": "User tasks/prescriptions subcollection"
+    },
+    "/users/{userDocId}/sessions/{sessionId}": {
+      "schema": "DripSession",
+      "description": "User study sessions subcollection"
+    },
+    "/users/{userDocId}/medicalRecords/{recordId}": {
+      "schema": "MedicalRecord",
+      "description": "User medical records subcollection"
+    }
+  }
+}

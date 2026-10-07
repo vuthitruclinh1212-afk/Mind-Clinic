@@ -10,9 +10,14 @@ import {
   VolumeX, 
   CloudRain, 
   Droplets,
-  Sparkles
+  Sparkles,
+  User,
+  LogIn,
+  Award,
+  Crown
 } from 'lucide-react';
-import { MoodType } from '../types';
+import { MoodType, UserProfile, UserCustomization } from '../types';
+import { AVATAR_FRAMES } from '../utils/achievements';
 
 interface SidebarProps {
   currentTab: string;
@@ -25,6 +30,9 @@ interface SidebarProps {
   isMuted: boolean;
   onToggleMute: () => void;
   activeTasksCount: number;
+  currentUser?: UserProfile | null;
+  onOpenAuthModal?: () => void;
+  customization?: UserCustomization;
 }
 
 export const MOODS: MoodType[] = [
@@ -65,6 +73,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isMuted,
   onToggleMute,
   activeTasksCount,
+  currentUser,
+  onOpenAuthModal,
+  customization,
 }) => {
   const navItems = [
     { id: 'dashboard', label: 'Phòng Tổng Quát', icon: LayoutDashboard, badge: null },
@@ -72,7 +83,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'medical-notes', label: 'Hồ Sơ & Bệnh Án', icon: ClipboardPen, badge: null },
     { id: 'pharmacy', label: 'Kho Dược (Web Tiếng Trung)', icon: Library, badge: null },
     { id: 'ai-doctor', label: 'Bác Sĩ Trưởng Khoa AI', icon: Stethoscope, badge: 'Dr. Ling' },
+    { id: 'achievements', label: 'Bảo Tàng Thành Tựu', icon: Award, badge: 'Huân chương' },
   ];
+
+  const frameConfig = customization?.equippedFrame ? AVATAR_FRAMES[customization.equippedFrame] : AVATAR_FRAMES.default;
 
   return (
     <aside className="w-full md:w-72 bg-white border-r border-teal-100 flex flex-col justify-between p-5 shadow-sm shrink-0">
@@ -90,6 +104,62 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <p className="text-xs text-teal-600 font-medium">Bệnh Viện Chữa Lành Tri Thức</p>
           </div>
         </div>
+
+        {/* User Account Capsule with Equipped Title & Badge */}
+        {currentUser ? (
+          <div 
+            onClick={onOpenAuthModal}
+            className="p-3 bg-gradient-to-br from-teal-50/80 via-white to-amber-50/40 border border-teal-100 hover:border-amber-300 rounded-2xl flex flex-col gap-2 cursor-pointer transition group shadow-xs"
+            title="Nhấp để xem thông tin hồ sơ Firestore & tài khoản"
+          >
+            <div className="flex items-center space-x-2.5 min-w-0">
+              <div className="relative shrink-0">
+                {currentUser.photoURL ? (
+                  <img
+                    src={currentUser.photoURL}
+                    alt={currentUser.displayName || 'Avatar'}
+                    className={`w-9 h-9 rounded-full ${frameConfig?.ringClass || 'border border-teal-200'}`}
+                  />
+                ) : (
+                  <div className={`w-9 h-9 rounded-full bg-teal-600 text-white flex items-center justify-center text-xs font-bold ${frameConfig?.ringClass || ''}`}>
+                    {(currentUser.displayName || currentUser.email)[0].toUpperCase()}
+                  </div>
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-bold text-slate-800 truncate group-hover:text-teal-700">
+                  {currentUser.displayName || currentUser.email.split('@')[0]}
+                </p>
+                {customization?.equippedTitle && (
+                  <p className="text-[10px] font-bold text-amber-700 truncate flex items-center gap-0.5">
+                    <Crown className="w-2.5 h-2.5 text-amber-500 shrink-0" />
+                    <span>[{customization.equippedTitle}]</span>
+                  </p>
+                )}
+                <p className="text-[9px] text-teal-600/80 font-mono truncate">
+                  {currentUser.docId}
+                </p>
+              </div>
+            </div>
+
+            {customization?.equippedBadge && (
+              <div className="pt-1.5 border-t border-teal-50/80 flex items-center justify-between text-[10px]">
+                <span className="text-slate-400 font-medium">Huy hiệu:</span>
+                <span className="font-semibold text-teal-800 truncate max-w-[140px] bg-white px-2 py-0.5 rounded-md border border-teal-100">
+                  {customization.equippedBadge}
+                </span>
+              </div>
+            )}
+          </div>
+        ) : onOpenAuthModal ? (
+          <button
+            onClick={onOpenAuthModal}
+            className="w-full py-2.5 px-3 bg-teal-50 hover:bg-teal-100 border border-teal-200 rounded-2xl text-xs font-bold text-teal-700 transition flex items-center justify-center gap-2 cursor-pointer shadow-xs active:scale-98"
+          >
+            <LogIn className="w-4 h-4 text-teal-600" />
+            <span>Đăng Nhập / Tách Tài Khoản</span>
+          </button>
+        ) : null}
 
         {/* Navigation Tabs */}
         <nav className="space-y-1.5">
