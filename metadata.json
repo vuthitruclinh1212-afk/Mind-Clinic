@@ -1,0 +1,6 @@
+{
+  "name": "Mind Clinic - Trạm Cấp Cứu Tri Thức",
+  "description": "Bệnh viện chữa lành áp lực học tập với Bình truyền dịch tự do (Flow-time Accumulator), kho dược tiếng Trung và Bác sĩ AI Dr. Ling.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
