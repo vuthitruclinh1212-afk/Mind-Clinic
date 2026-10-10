@@ -1,5 +1,13 @@
 @import "tailwindcss";
 
+input, textarea, select {
+  color: #1e293b; /* text-slate-800 */
+}
+
+input::placeholder, textarea::placeholder {
+  color: #94a3b8; /* text-slate-400 */
+}
+
 @layer utilities {
   .custom-scroll::-webkit-scrollbar {
     width: 6px;

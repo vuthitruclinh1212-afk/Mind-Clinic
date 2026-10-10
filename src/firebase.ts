@@ -80,6 +80,26 @@ export function getEmailDocId(email: string): string {
 }
 
 /**
+ * Recursively strip undefined properties so Firestore never throws unsupported field value errors
+ */
+export function sanitizeForFirestore<T = any>(val: any): T {
+  if (val === undefined) return null as any;
+  if (val === null || typeof val !== 'object') return val;
+  if (Array.isArray(val)) {
+    return val
+      .filter((item) => item !== undefined)
+      .map((item) => sanitizeForFirestore(item)) as any;
+  }
+  const res: Record<string, any> = {};
+  for (const [k, v] of Object.entries(val)) {
+    if (v !== undefined) {
+      res[k] = sanitizeForFirestore(v);
+    }
+  }
+  return res as T;
+}
+
+/**
  * Test connection to Firestore on initial boot
  */
 export async function testConnection(): Promise<boolean> {

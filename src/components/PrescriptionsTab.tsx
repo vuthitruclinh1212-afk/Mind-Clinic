@@ -75,16 +75,27 @@ export const PrescriptionsTab: React.FC<PrescriptionsTabProps> = ({
       formattedDocUrl = 'https://' + formattedDocUrl;
     }
 
-    onAddTask({
+    const payload: AddTaskPayload = {
       title: title.trim(),
       dosage,
       category,
       priority,
-      scheduledTime: scheduledTime || undefined,
-      documentUrl: formattedDocUrl || undefined,
-      documentName: documentName.trim() || undefined,
-      notes: notes.trim() || undefined,
-    });
+    };
+
+    if (scheduledTime.trim()) {
+      payload.scheduledTime = scheduledTime.trim();
+    }
+    if (formattedDocUrl) {
+      payload.documentUrl = formattedDocUrl;
+    }
+    if (documentName.trim()) {
+      payload.documentName = documentName.trim();
+    }
+    if (notes.trim()) {
+      payload.notes = notes.trim();
+    }
+
+    onAddTask(payload);
 
     setTitle('');
     setDocumentUrl('');
@@ -198,11 +209,11 @@ export const PrescriptionsTab: React.FC<PrescriptionsTabProps> = ({
     }
 
     if (sortBy === 'dosage') {
-      return a.dosage.localeCompare(b.dosage);
+      return (a.dosage || '').localeCompare(b.dosage || '');
     }
 
     // Default newest
-    return b.id - a.id;
+    return (Number(b.id) || 0) - (Number(a.id) || 0);
   });
 
   const total = tasks.length;
@@ -249,13 +260,13 @@ export const PrescriptionsTab: React.FC<PrescriptionsTabProps> = ({
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Tên liều thuốc (ví dụ: Nhai 5 chữ Hán bộ Mộc, Đọc 1 bài hội thoại...)"
-              className="md:col-span-5 bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:outline-hidden focus:border-teal-400 focus:bg-white transition"
+              className="md:col-span-5 bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm text-slate-800 placeholder:text-slate-400 font-medium focus:outline-hidden focus:border-teal-400 focus:bg-white transition"
             />
 
             <select
               value={dosage}
               onChange={(e) => setDosage(e.target.value as DosageType)}
-              className="md:col-span-2 bg-slate-50 border border-slate-200 rounded-2xl px-3 py-3 text-xs focus:outline-hidden focus:border-teal-400 text-slate-700"
+              className="md:col-span-2 bg-slate-50 border border-slate-200 rounded-2xl px-3 py-3 text-xs focus:outline-hidden focus:border-teal-400 text-slate-800 font-semibold"
             >
               <option value="Liều nhẹ (5 - 10 phút)">Liều nhẹ (5 - 10p)</option>
               <option value="Liều vừa (20 - 30 phút)">Liều vừa (20 - 30p)</option>
@@ -266,7 +277,7 @@ export const PrescriptionsTab: React.FC<PrescriptionsTabProps> = ({
             <select
               value={priority}
               onChange={(e) => setPriority(e.target.value as PriorityLevel)}
-              className="md:col-span-3 bg-slate-50 border border-slate-200 rounded-2xl px-3 py-3 text-xs focus:outline-hidden focus:border-teal-400 text-slate-700 font-semibold"
+              className="md:col-span-3 bg-slate-50 border border-slate-200 rounded-2xl px-3 py-3 text-xs focus:outline-hidden focus:border-teal-400 text-slate-800 font-semibold"
             >
               <option value="Bắt buộc uống (Khẩn cấp)">🔴 Bắt buộc uống (Khẩn cấp)</option>
               <option value="Quan trọng (Uống trước)">🟡 Quan trọng (Uống trước)</option>
@@ -281,7 +292,7 @@ export const PrescriptionsTab: React.FC<PrescriptionsTabProps> = ({
                 value={scheduledTime}
                 onChange={(e) => setScheduledTime(e.target.value)}
                 title="Thời gian uống thuốc trong ngày"
-                className="bg-transparent text-slate-700 font-bold focus:outline-hidden w-full cursor-pointer"
+                className="bg-transparent text-slate-800 font-bold focus:outline-hidden w-full cursor-pointer"
               />
             </div>
           </div>
@@ -290,11 +301,11 @@ export const PrescriptionsTab: React.FC<PrescriptionsTabProps> = ({
           {showAdvancedForm && (
             <div className="p-4 bg-teal-50/40 border border-teal-100 rounded-2xl grid grid-cols-1 md:grid-cols-12 gap-3 text-xs animate-in fade-in duration-150">
               <div className="md:col-span-3">
-                <label className="block text-slate-600 font-semibold mb-1">Chuyên khoa / Phân loại</label>
+                <label className="block text-slate-700 font-semibold mb-1">Chuyên khoa / Phân loại</label>
                 <select
                   value={category}
                   onChange={(e) => setCategory(e.target.value as TaskCategory)}
-                  className="w-full bg-white border border-slate-200 rounded-xl p-2.5 text-xs focus:outline-hidden focus:border-teal-400"
+                  className="w-full bg-white border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 font-semibold focus:outline-hidden focus:border-teal-400"
                 >
                   <option value="Hán tự (Hanzi)">Hán tự (Hanzi)</option>
                   <option value="Ngữ pháp">Ngữ pháp</option>
@@ -306,7 +317,7 @@ export const PrescriptionsTab: React.FC<PrescriptionsTabProps> = ({
               </div>
 
               <div className="md:col-span-4">
-                <label className="block text-slate-600 font-semibold mb-1 flex items-center gap-1">
+                <label className="block text-slate-700 font-semibold mb-1 flex items-center gap-1">
                   <ExternalLink className="w-3 h-3 text-teal-600" />
                   <span>Link tài liệu liên quan (Website, Drive, PDF)</span>
                 </label>
@@ -315,23 +326,23 @@ export const PrescriptionsTab: React.FC<PrescriptionsTabProps> = ({
                   value={documentUrl}
                   onChange={(e) => setDocumentUrl(e.target.value)}
                   placeholder="https://drive.google.com/... hoặc hanzii.net..."
-                  className="w-full bg-white border border-slate-200 rounded-xl p-2.5 text-xs focus:outline-hidden focus:border-teal-400"
+                  className="w-full bg-white border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 placeholder:text-slate-400 font-medium focus:outline-hidden focus:border-teal-400"
                 />
               </div>
 
               <div className="md:col-span-5">
-                <label className="block text-slate-600 font-semibold mb-1">Tên tài liệu đính kèm (Hiển thị)</label>
+                <label className="block text-slate-700 font-semibold mb-1">Tên tài liệu đính kèm (Hiển thị)</label>
                 <input
                   type="text"
                   value={documentName}
                   onChange={(e) => setDocumentName(e.target.value)}
                   placeholder="Ví dụ: Giáo trình Hán ngữ Tập 2 - Bài 14..."
-                  className="w-full bg-white border border-slate-200 rounded-xl p-2.5 text-xs focus:outline-hidden focus:border-teal-400"
+                  className="w-full bg-white border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 placeholder:text-slate-400 font-medium focus:outline-hidden focus:border-teal-400"
                 />
               </div>
 
               <div className="md:col-span-12">
-                <label className="block text-slate-600 font-semibold mb-1 flex items-center gap-1">
+                <label className="block text-slate-700 font-semibold mb-1 flex items-center gap-1">
                   <StickyNote className="w-3 h-3 text-teal-600" />
                   <span>Ghi chú điều trị / Y lệnh dặn dò thêm</span>
                 </label>
@@ -340,7 +351,7 @@ export const PrescriptionsTab: React.FC<PrescriptionsTabProps> = ({
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   placeholder="Ví dụ: Nhớ chú ý viết đúng nét sổ cong móc; Đọc to 3 lần trước gương..."
-                  className="w-full bg-white border border-slate-200 rounded-xl p-2.5 text-xs focus:outline-hidden focus:border-teal-400"
+                  className="w-full bg-white border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 placeholder:text-slate-400 font-medium focus:outline-hidden focus:border-teal-400"
                 />
               </div>
             </div>

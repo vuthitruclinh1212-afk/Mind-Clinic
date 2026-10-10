@@ -44,7 +44,8 @@ import {
   signInWithPopup, 
   firebaseSignOut, 
   getEmailDocId, 
-  testConnection 
+  testConnection,
+  sanitizeForFirestore
 } from './firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { 
@@ -578,22 +579,27 @@ export default function App() {
   // Safe Firestore Auto-Sync (Only updates when currentUser exists and data has finished loading)
   useEffect(() => {
     if (!currentUser || !isDataLoadedRef.current) return;
-    const userRef = doc(db, 'users', currentUser.docId);
-    updateDoc(userRef, {
-      tasks,
-      sessions,
-      notes,
-      medicalRecords,
-      pharmacyItems,
-      customization,
-      unlockedAchievements: savedUnlockedMap,
-      jars,
-      recurring,
-      transactions,
-      updatedAt: new Date().toISOString(),
-    }).catch((err) => {
-      console.warn('Auto-sync to Firestore user document:', err);
-    });
+    try {
+      const userRef = doc(db, 'users', currentUser.docId);
+      const safePayload = sanitizeForFirestore({
+        tasks,
+        sessions,
+        notes,
+        medicalRecords,
+        pharmacyItems,
+        customization,
+        unlockedAchievements: savedUnlockedMap,
+        jars,
+        recurring,
+        transactions,
+        updatedAt: new Date().toISOString(),
+      });
+      updateDoc(userRef, safePayload).catch((err) => {
+        console.warn('Auto-sync to Firestore user document:', err);
+      });
+    } catch (err) {
+      console.warn('Auto-sync preparation error:', err);
+    }
   }, [tasks, sessions, notes, medicalRecords, pharmacyItems, customization, savedUnlockedMap, jars, recurring, transactions, currentUser]);
 
   // Sync to LocalStorage
@@ -726,12 +732,17 @@ export default function App() {
             soundEngine.playSuccessChime();
           }
 
-          return { 
+          const updated: Task = { 
             ...t, 
             done: nextDone,
-            completedAt: nextDone ? nowStr : undefined,
             completedEarly: nextDone ? isEarly : false,
           };
+          if (nextDone) {
+            updated.completedAt = nowStr;
+          } else {
+            delete updated.completedAt;
+          }
+          return updated;
         }
         return t;
       })
@@ -750,21 +761,39 @@ export default function App() {
   }) => {
     const newTask: Task = {
       id: Date.now(),
-      ...taskPayload,
+      title: taskPayload.title,
+      dosage: taskPayload.dosage || 'Liều nhẹ (5 - 10 phút)',
+      category: taskPayload.category || 'Hán tự (Hanzi)',
+      priority: taskPayload.priority || 'Bình thường',
       done: false,
       createdAt: 'Hôm nay',
     };
-    setTasks([newTask, ...tasks]);
+    if (taskPayload.scheduledTime) newTask.scheduledTime = taskPayload.scheduledTime;
+    if (taskPayload.documentUrl) newTask.documentUrl = taskPayload.documentUrl;
+    if (taskPayload.documentName) newTask.documentName = taskPayload.documentName;
+    if (taskPayload.notes) newTask.notes = taskPayload.notes;
+
+    setTasks((prev) => [newTask, ...prev]);
   };
 
   const handleAddMultipleTasks = (newTasks: Omit<Task, 'id' | 'createdAt'>[]) => {
-    const mapped = newTasks.map((t, idx) => ({
-      ...t,
-      priority: t.priority || 'Bình thường',
-      id: Date.now() + idx,
-      createdAt: 'Hôm nay',
-    }));
-    setTasks([...mapped, ...tasks]);
+    const mapped: Task[] = newTasks.map((t, idx) => {
+      const taskObj: Task = {
+        id: Date.now() + idx,
+        title: t.title,
+        dosage: t.dosage,
+        category: t.category,
+        priority: t.priority || 'Bình thường',
+        done: Boolean(t.done),
+        createdAt: 'Hôm nay',
+      };
+      if (t.scheduledTime) taskObj.scheduledTime = t.scheduledTime;
+      if (t.documentUrl) taskObj.documentUrl = t.documentUrl;
+      if (t.documentName) taskObj.documentName = t.documentName;
+      if (t.notes) taskObj.notes = t.notes;
+      return taskObj;
+    });
+    setTasks((prev) => [...mapped, ...prev]);
   };
 
   const handleDeleteTask = (id: number) => {
