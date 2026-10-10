@@ -82,6 +82,40 @@ class SoundEngine {
     }
   }
 
+  public playGentleBreakAlert() {
+    if (this.isMuted) return;
+    try {
+      this.initCtx();
+      if (!this.ctx) return;
+
+      const now = this.ctx.currentTime;
+      // Healing harmonic chords (F4, A4, C5, E5) sounding like a gentle singing bowl
+      const chord = [349.23, 440.0, 523.25, 659.25];
+
+      chord.forEach((freq, idx) => {
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, now + idx * 0.05);
+
+        const startTime = now + idx * 0.05;
+        gain.gain.setValueAtTime(0, startTime);
+        gain.gain.linearRampToValueAtTime(0.06 / (idx + 1), startTime + 0.08);
+        gain.gain.exponentialRampToValueAtTime(0.0001, startTime + 1.8);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+
+        osc.start(startTime);
+        osc.stop(startTime + 1.9);
+      });
+    } catch {
+      // Audio playback gracefully suppressed
+    }
+  }
+
   public toggleRainAmbient(): boolean {
     try {
       this.initCtx();

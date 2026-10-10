@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Syringe, 
   Play, 
@@ -25,7 +25,13 @@ import {
   Flame,
   Star,
   FileText,
-  ExternalLink
+  ExternalLink,
+  Target,
+  Timer,
+  Coffee,
+  Bell,
+  Heart,
+  X
 } from 'lucide-react';
 import { 
   ResponsiveContainer, 
@@ -83,6 +89,71 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 }) => {
   const [selectedTaskForDrip, setSelectedTaskForDrip] = useState<string>('');
   const [chartMetric, setChartMetric] = useState<'volume' | 'time'>('volume');
+
+  // Study Goal & Break Encouragement States
+  const [studyGoalMinutes, setStudyGoalMinutes] = useState<number | null>(() => {
+    try {
+      const saved = localStorage.getItem('mind_clinic_study_goal_minutes');
+      return saved !== null ? JSON.parse(saved) : 25; // Default 25 min (Pomodoro)
+    } catch {
+      return 25;
+    }
+  });
+  const [customGoalInput, setCustomGoalInput] = useState<string>('30');
+  const [isEditingCustomGoal, setIsEditingCustomGoal] = useState<boolean>(false);
+  const [showGoalFinishedModal, setShowGoalFinishedModal] = useState<boolean>(false);
+  const [isScreenShaking, setIsScreenShaking] = useState<boolean>(false);
+  const [hasAlertedForCurrentSession, setHasAlertedForCurrentSession] = useState<boolean>(false);
+
+  // Target metrics calculation
+  const targetGoalSeconds = studyGoalMinutes ? studyGoalMinutes * 60 : 0;
+  const currentMinutesInSession = Math.floor(flowSeconds / 60);
+  const remainingSeconds = targetGoalSeconds > flowSeconds ? targetGoalSeconds - flowSeconds : 0;
+  const remainingMinutes = Math.floor(remainingSeconds / 60);
+  const remainingSecs = remainingSeconds % 60;
+  const remainingTimeFormatted = `${String(remainingMinutes).padStart(2, '0')}:${String(remainingSecs).padStart(2, '0')}`;
+  const goalProgressPercent = targetGoalSeconds > 0 ? Math.min(100, Math.round((flowSeconds / targetGoalSeconds) * 100)) : 0;
+
+  // Study Goal completion checking & gentle notification trigger
+  useEffect(() => {
+    if (!studyGoalMinutes || studyGoalMinutes <= 0) return;
+    const targetSecs = studyGoalMinutes * 60;
+
+    if (flowSeconds >= targetSecs && !hasAlertedForCurrentSession && flowSeconds > 0) {
+      setHasAlertedForCurrentSession(true);
+
+      // 1. Gentle screen vibration effect
+      setIsScreenShaking(true);
+      setTimeout(() => setIsScreenShaking(false), 1400);
+
+      // 2. Hardware vibration (if supported on mobile/touch devices)
+      try {
+        if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+          navigator.vibrate([250, 150, 250, 150, 350]);
+        }
+      } catch {
+        // Silently catch
+      }
+
+      // 3. Play calming break alert chime
+      soundEngine.playGentleBreakAlert();
+
+      // 4. Open soothing reminder modal
+      setShowGoalFinishedModal(true);
+
+      // 5. Gentle pause flow so user isn't rushed
+      if (isFlowing) {
+        onToggleFlow();
+      }
+    }
+  }, [flowSeconds, studyGoalMinutes, hasAlertedForCurrentSession, isFlowing, onToggleFlow]);
+
+  // Reset alert state when timer is at 0
+  useEffect(() => {
+    if (flowSeconds === 0) {
+      setHasAlertedForCurrentSession(false);
+    }
+  }, [flowSeconds]);
 
   // Calculate formatted time
   const hrs = String(Math.floor(flowSeconds / 3600)).padStart(2, '0');
@@ -191,7 +262,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   };
 
   return (
-    <section className="space-y-6">
+    <section className={`space-y-6 transition-all duration-300 ${isScreenShaking ? 'animate-gentle-shake' : ''}`}>
       {/* Banner Greeting */}
       <div className="bg-gradient-to-r from-teal-500 via-teal-400 to-emerald-400 rounded-3xl p-6 text-white shadow-lg shadow-teal-100/70 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 relative overflow-hidden">
         <div className="absolute right-0 top-0 translate-x-10 -translate-y-10 w-48 h-48 bg-white/10 rounded-full blur-2xl pointer-events-none"></div>
@@ -398,6 +469,150 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
             </div>
           </div>
 
+          {/* ================= MỤC TIÊU THỜI GIAN HỌC (STUDY TIME GOAL & REST REMINDER) ================= */}
+          <div className="w-full bg-gradient-to-br from-emerald-50/70 via-teal-50/50 to-cyan-50/60 border border-teal-200/90 p-3 rounded-2xl mb-4 text-left space-y-2.5 shadow-2xs">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-teal-900 flex items-center gap-1.5">
+                <Target className="w-3.5 h-3.5 text-teal-600" />
+                <span>Mục tiêu thời gian học:</span>
+              </span>
+              {studyGoalMinutes ? (
+                <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100/80 px-2 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
+                  <Timer className="w-3 h-3 text-emerald-600" />
+                  {studyGoalMinutes} phút
+                </span>
+              ) : (
+                <span className="text-[10px] font-medium text-slate-500 bg-white/80 px-2 py-0.5 rounded-full border border-slate-200">
+                  Tự do (Không hẹn giờ)
+                </span>
+              )}
+            </div>
+
+            {/* Quick Presets */}
+            <div className="grid grid-cols-5 gap-1">
+              {[
+                { label: 'Tự do', val: null },
+                { label: '15p', val: 15 },
+                { label: '25p', val: 25 },
+                { label: '45p', val: 45 },
+                { label: '60p', val: 60 },
+              ].map((preset) => {
+                const isSelected = studyGoalMinutes === preset.val;
+                return (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    onClick={() => {
+                      setStudyGoalMinutes(preset.val);
+                      try {
+                        localStorage.setItem('mind_clinic_study_goal_minutes', JSON.stringify(preset.val));
+                      } catch {}
+                      setHasAlertedForCurrentSession(false);
+                    }}
+                    className={`py-1 px-1 rounded-xl text-[11px] font-semibold transition text-center cursor-pointer ${
+                      isSelected
+                        ? 'bg-teal-500 text-white shadow-xs'
+                        : 'bg-white/90 text-slate-600 hover:bg-white hover:text-teal-700 border border-teal-100'
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Custom Input or Status */}
+            <div className="flex items-center justify-between text-[11px] pt-0.5">
+              {!isEditingCustomGoal ? (
+                <button
+                  type="button"
+                  onClick={() => setIsEditingCustomGoal(true)}
+                  className="text-[10px] text-teal-700 hover:text-teal-800 font-semibold hover:underline flex items-center gap-1 cursor-pointer"
+                >
+                  <Plus className="w-2.5 h-2.5" />
+                  <span>Tùy chỉnh số phút...</span>
+                </button>
+              ) : (
+                <div className="flex items-center gap-1.5 w-full bg-white p-1 rounded-xl border border-teal-200 shadow-2xs">
+                  <input
+                    type="number"
+                    min="1"
+                    max="360"
+                    value={customGoalInput}
+                    onChange={(e) => setCustomGoalInput(e.target.value)}
+                    placeholder="Phút"
+                    className="w-16 px-2 py-0.5 text-xs text-slate-700 border border-slate-200 rounded-lg focus:outline-hidden focus:border-teal-400"
+                  />
+                  <span className="text-[10px] text-slate-500">phút</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const parsed = parseInt(customGoalInput, 10);
+                      if (!isNaN(parsed) && parsed > 0) {
+                        setStudyGoalMinutes(parsed);
+                        try {
+                          localStorage.setItem('mind_clinic_study_goal_minutes', JSON.stringify(parsed));
+                        } catch {}
+                        setHasAlertedForCurrentSession(false);
+                      }
+                      setIsEditingCustomGoal(false);
+                    }}
+                    className="bg-teal-500 text-white text-[10px] px-2 py-0.5 rounded-lg font-bold hover:bg-teal-600 cursor-pointer ml-auto"
+                  >
+                    Lưu
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingCustomGoal(false)}
+                    className="text-slate-400 hover:text-slate-600 text-[10px] px-1 cursor-pointer"
+                  >
+                    Hủy
+                  </button>
+                </div>
+              )}
+
+              {studyGoalMinutes && !isEditingCustomGoal && (
+                <span className="text-[10px] text-teal-800 font-medium ml-auto">
+                  {goalProgressPercent >= 100 ? (
+                    <span className="text-emerald-700 font-bold flex items-center gap-0.5">
+                      <Sparkles className="w-3 h-3 text-amber-500" /> Đã hoàn thành!
+                    </span>
+                  ) : (
+                    <span>Còn <strong>{remainingTimeFormatted}</strong></span>
+                  )}
+                </span>
+              )}
+            </div>
+
+            {/* Goal Progress Bar */}
+            {studyGoalMinutes && (
+              <div className="space-y-1 pt-0.5">
+                <div className="w-full bg-teal-100/70 h-2 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full transition-all duration-500 rounded-full ${
+                      goalProgressPercent >= 100
+                        ? 'bg-gradient-to-r from-emerald-500 to-teal-500'
+                        : 'bg-gradient-to-r from-teal-400 to-emerald-400'
+                    }`}
+                    style={{ width: `${Math.min(100, goalProgressPercent)}%` }}
+                  />
+                </div>
+                <div className="flex justify-between text-[9px] text-teal-800/80 font-medium px-0.5">
+                  <span>Tiến độ: {currentMinutesInSession}/{studyGoalMinutes} phút ({goalProgressPercent}%)</span>
+                  {goalProgressPercent >= 100 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowGoalFinishedModal(true)}
+                      className="text-emerald-700 font-bold hover:underline flex items-center gap-0.5 cursor-pointer"
+                    >
+                      <span>Xem lời khuyên nghỉ ngơi 🍵</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Primary Action Buttons */}
           <div className="flex gap-2 w-full">
             <button
@@ -432,7 +647,11 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
             )}
 
             <button
-              onClick={onResetFlow}
+              onClick={() => {
+                setHasAlertedForCurrentSession(false);
+                setShowGoalFinishedModal(false);
+                onResetFlow();
+              }}
               title="Đặt lại đồng hồ"
               className="bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-3 rounded-2xl transition text-sm cursor-pointer"
             >
@@ -759,6 +978,123 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
           </p>
         </div>
       </div>
+
+      {/* ================= THÔNG BÁO NHẸ NHÀNG: HOÀN THÀNH MỤC TIÊU & UỐNG NƯỚC ================= */}
+      {showGoalFinishedModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl p-6 sm:p-7 max-w-md w-full shadow-2xl border-2 border-emerald-300 relative text-center overflow-hidden animate-in zoom-in-95 duration-200">
+            {/* Decorative top color bar */}
+            <div className="absolute top-0 inset-x-0 h-2 bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400"></div>
+
+            {/* Close button */}
+            <button
+              type="button"
+              onClick={() => setShowGoalFinishedModal(false)}
+              className="absolute top-3.5 right-3.5 p-1.5 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+              title="Đóng"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            {/* Floating Soft Icon */}
+            <div className="mx-auto w-16 h-16 bg-gradient-to-br from-emerald-100 to-teal-100 rounded-3xl flex items-center justify-center text-3xl mb-3.5 shadow-inner animate-float-gentle border border-emerald-200">
+              🍵
+            </div>
+
+            {/* Target Reached Badge */}
+            <div className="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-800 text-xs font-bold px-3 py-1 rounded-full border border-emerald-200 mb-2.5">
+              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+              <span>Đạt mục tiêu {studyGoalMinutes} phút tập trung!</span>
+            </div>
+
+            <h3 className="text-xl font-black text-slate-800 tracking-tight mb-2">
+              Đã đến lúc nghỉ ngơi & uống nước 💧
+            </h3>
+
+            <p className="text-xs text-slate-600 leading-relaxed mb-4 px-1">
+              Não bộ của bạn đã làm việc rất chăm chỉ trong phiên vừa qua. Hãy tạm gác bài vở sang một bên, vươn vai thư giãn và nạp lại năng lượng nhé!
+            </p>
+
+            {/* Gentle Rest Tips */}
+            <div className="bg-gradient-to-br from-teal-50/80 to-emerald-50/70 rounded-2xl p-3.5 border border-teal-100 text-left space-y-2.5 mb-5 text-xs">
+              <div className="flex items-start gap-2.5">
+                <div className="w-7 h-7 rounded-xl bg-teal-500/15 flex items-center justify-center text-base shrink-0">
+                  💧
+                </div>
+                <div>
+                  <strong className="text-teal-900 block font-bold">Uống ngay một ly nước ấm / mát</strong>
+                  <span className="text-slate-500 text-[11px] leading-tight block">
+                    Bổ sung độ ẩm giúp tế bào não tuần hoàn máu và hồi phục độ nhạy bén.
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2.5">
+                <div className="w-7 h-7 rounded-xl bg-emerald-500/15 flex items-center justify-center text-base shrink-0">
+                  👀
+                </div>
+                <div>
+                  <strong className="text-emerald-900 block font-bold">Thả lỏng mắt (Quy tắc 20-20-20)</strong>
+                  <span className="text-slate-500 text-[11px] leading-tight block">
+                    Hướng tầm mắt ra xa ít nhất 6 mét trong 20-30 giây để giảm mỏi điều tiết.
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2.5">
+                <div className="w-7 h-7 rounded-xl bg-amber-500/15 flex items-center justify-center text-base shrink-0">
+                  🧘
+                </div>
+                <div>
+                  <strong className="text-amber-900 block font-bold">Vươn vai & Hít thở sâu</strong>
+                  <span className="text-slate-500 text-[11px] leading-tight block">
+                    Đứng dậy đi lại nhẹ nhàng 3-5 phút giúp giải tỏa căng thẳng khớp cổ vai gáy.
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() => setShowGoalFinishedModal(false)}
+                className="w-full py-3 px-4 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-bold text-sm rounded-2xl shadow-md shadow-emerald-200 transition flex items-center justify-center gap-2 cursor-pointer active:scale-98"
+              >
+                <span>💧 Tôi đã uống nước & Sẽ nghỉ ngơi</span>
+              </button>
+
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStudyGoalMinutes((prev) => (prev ? prev + 5 : 5));
+                    setHasAlertedForCurrentSession(false);
+                    setShowGoalFinishedModal(false);
+                    if (!isFlowing) onToggleFlow();
+                  }}
+                  className="py-2.5 px-3 bg-teal-50 hover:bg-teal-100 text-teal-800 font-semibold text-xs rounded-xl border border-teal-200 transition flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Timer className="w-3.5 h-3.5 text-teal-600" />
+                  <span>Học thêm 5 phút</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowGoalFinishedModal(false);
+                    handleFinishAndSave();
+                  }}
+                  className="py-2.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Save className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Lưu ca học này</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 };
