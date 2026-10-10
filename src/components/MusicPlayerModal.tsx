@@ -11,7 +11,9 @@ import {
   Check, 
   X, 
   Radio, 
-  Sparkles 
+  Sparkles,
+  SkipBack,
+  SkipForward
 } from 'lucide-react';
 import { MusicTrack } from '../types';
 
@@ -25,6 +27,8 @@ interface MusicPlayerModalProps {
   onDeleteTrack: (id: string) => void;
   isPlaying: boolean;
   onTogglePlay: () => void;
+  onNextTrack?: () => void;
+  onPrevTrack?: () => void;
 }
 
 export const MusicPlayerModal: React.FC<MusicPlayerModalProps> = ({
@@ -37,6 +41,8 @@ export const MusicPlayerModal: React.FC<MusicPlayerModalProps> = ({
   onDeleteTrack,
   isPlaying,
   onTogglePlay,
+  onNextTrack,
+  onPrevTrack,
 }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [newTitle, setNewTitle] = useState('');
@@ -112,7 +118,17 @@ export const MusicPlayerModal: React.FC<MusicPlayerModalProps> = ({
 
         {/* Currently playing banner */}
         <div className="bg-teal-50/70 p-4 border-b border-teal-100 flex items-center justify-between shrink-0">
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-2">
+            {onPrevTrack && (
+              <button
+                onClick={onPrevTrack}
+                title="Bài trước đó"
+                className="w-8 h-8 rounded-xl bg-white hover:bg-teal-100 text-teal-700 flex items-center justify-center transition cursor-pointer border border-teal-200"
+              >
+                <SkipBack className="w-4 h-4 fill-teal-700" />
+              </button>
+            )}
+
             <button
               onClick={onTogglePlay}
               className={`w-10 h-10 rounded-2xl flex items-center justify-center text-white shadow-xs transition cursor-pointer ${
@@ -121,10 +137,21 @@ export const MusicPlayerModal: React.FC<MusicPlayerModalProps> = ({
             >
               {isPlaying ? <Pause className="w-5 h-5 fill-white" /> : <Play className="w-5 h-5 fill-white" />}
             </button>
-            <div>
+
+            {onNextTrack && (
+              <button
+                onClick={onNextTrack}
+                title="Bài tiếp theo trong danh sách"
+                className="w-8 h-8 rounded-xl bg-white hover:bg-teal-100 text-teal-700 flex items-center justify-center transition cursor-pointer border border-teal-200"
+              >
+                <SkipForward className="w-4 h-4 fill-teal-700" />
+              </button>
+            )}
+
+            <div className="ml-2">
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-teal-600 bg-teal-100 px-2 py-0.5 rounded-md">
-                  Đang phát
+                  Đang phát (Tự chuyển tiếp bài)
                 </span>
                 <span className="font-bold text-sm text-slate-800">
                   {currentTrack ? currentTrack.title : 'Chưa chọn bài hát'}

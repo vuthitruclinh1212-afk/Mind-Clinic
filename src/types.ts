@@ -18,6 +18,14 @@ export type PriorityLevel =
   | 'Bình thường' 
   | 'Tùy chọn / Thư giãn';
 
+export type PrescriptionFrequency = 
+  | 'Mỗi ngày (Hàng ngày)' 
+  | 'Cách 1 ngày (2 ngày / lần)' 
+  | 'Các ngày trong tuần (T2 - T6)' 
+  | 'Cuối tuần (Thứ 7 & CN)' 
+  | 'Mỗi tuần 1 lần' 
+  | 'Khi cần thiết';
+
 export interface Task {
   id: number;
   title: string;
@@ -25,6 +33,11 @@ export interface Task {
   category: TaskCategory;
   priority: PriorityLevel;
   scheduledTime?: string; // e.g. "08:30", "14:00", "20:00"
+  startDate?: string; // e.g. "2026-10-10"
+  endDate?: string; // e.g. "2026-11-10"
+  isLongTerm?: boolean; // Đơn thuốc dài hạn
+  frequency?: PrescriptionFrequency; // Tần suất
+  durationLabel?: string; // e.g. "30 ngày", "3 tháng", "Dài hạn liên tục"
   documentUrl?: string; // link to documents, books, drive
   documentName?: string; // display name for document
   notes?: string; // specific prescription notes
@@ -187,5 +200,25 @@ export interface UserCustomization {
   equippedWallpaper: 'default' | 'tea-pavilion' | 'imperial-library' | 'bamboo-waterfall' | 'cyber-chamber';
   equippedFrame: 'default' | 'aura-cyan' | 'aura-gold' | 'aura-fire' | 'aura-dragon';
   customAccumulatedDays: number;
+}
+
+export type ComfortRating = 
+  | 'Rất căng thẳng / Áp lực cao'
+  | 'Hơi gò bó / Mệt mỏi'
+  | 'Bình thường / Ổn định'
+  | 'Thư thái / Dễ chịu'
+  | 'Trạng thái Dòng chảy (Flow) cực độ';
+
+export interface StudyJournalEntry {
+  id: string; // e.g. "journal-1718000000000"
+  date: string; // YYYY-MM-DD
+  studyHours: number; // e.g. 2.5
+  comfortRating: ComfortRating;
+  comfortScore: number; // 1 to 5
+  feelingsText: string; // Cảm nhận, suy nghĩ trong ngày
+  highlights?: string; // Điểm sáng / Điều tâm đắc
+  tags?: string[];
+  createdAt: string;
+  updatedAt?: string;
 }
 

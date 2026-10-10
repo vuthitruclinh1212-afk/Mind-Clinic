@@ -83,12 +83,12 @@ export const MedicalNotesTab: React.FC<MedicalNotesTabProps> = ({
 
   // Voice recording and speech-to-text states
   const [isRecording, setIsRecording] = useState(false);
-  const [voiceLanguage, setVoiceLanguage] = useState<'zh-CN' | 'zh-TW' | 'vi-VN'>('zh-CN');
+  const [voiceLanguage, setVoiceLanguage] = useState<'vi-VN' | 'zh-CN' | 'zh-TW'>('vi-VN');
   const [transcribedText, setTranscribedText] = useState('');
   const [interimText, setInterimText] = useState('');
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [recordingStatus, setRecordingStatus] = useState<string>('Sẵn sàng ghi âm giọng đọc');
-  const [dictateDirectly, setDictateDirectly] = useState(true);
+  const [lastSavedSnippet, setLastSavedSnippet] = useState<string>('');
 
   const recognitionRef = useRef<any>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -114,7 +114,11 @@ export const MedicalNotesTab: React.FC<MedicalNotesTabProps> = ({
 
       recognition.onstart = () => {
         setIsRecording(true);
-        setRecordingStatus('Đang lắng nghe... Hãy đọc to từ vựng tiếng Trung!');
+        setRecordingStatus(
+          voiceLanguage === 'vi-VN'
+            ? 'Đang lắng nghe tiếng Việt... Hãy nói to để chuyển vào sổ ghi chép!'
+            : 'Đang lắng nghe tiếng Trung... Hãy đọc to để chuyển vào sổ ghi chép!'
+        );
       };
 
       recognition.onresult = (event: any) => {
@@ -133,16 +137,21 @@ export const MedicalNotesTab: React.FC<MedicalNotesTabProps> = ({
         if (final) {
           const trimmedFinal = final.trim();
           setTranscribedText((prev) => (prev ? prev + ' ' + trimmedFinal : trimmedFinal));
+          setLastSavedSnippet(trimmedFinal);
 
-          if (dictateDirectly) {
-            if (activeView === 'markdown') {
-              const current = notesRef.current;
-              const separator = current.endsWith('\n') || current.length === 0 ? '' : ' ';
-              onSaveNotes(current + separator + trimmedFinal);
-            } else if (isAddingRecord) {
-              setNewRecContent((prev) => (prev ? prev + ' ' + trimmedFinal : trimmedFinal));
-            }
+          // WRITE DIRECTLY TO SỔ GHI CHÉP (notes)!
+          const current = notesRef.current || '';
+          const separator = current.endsWith('\n') || current.length === 0 ? '' : '\n';
+          const updatedNotes = current + separator + trimmedFinal;
+          notesRef.current = updatedNotes;
+          onSaveNotes(updatedNotes);
+
+          // Also insert into new record form if open
+          if (isAddingRecord) {
+            setNewRecContent((prev) => (prev ? prev + ' ' + trimmedFinal : trimmedFinal));
           }
+
+          soundEngine.playSuccessChime();
         }
         setInterimText(interim);
       };
@@ -176,7 +185,7 @@ export const MedicalNotesTab: React.FC<MedicalNotesTabProps> = ({
         clearInterval(timerIntervalRef.current);
       }
     };
-  }, [voiceLanguage, dictateDirectly, activeView, isAddingRecord]);
+  }, [voiceLanguage, activeView, isAddingRecord]);
 
   // Handle Voice Recording Toggle
   const toggleRecording = async () => {
@@ -328,17 +337,30 @@ export const MedicalNotesTab: React.FC<MedicalNotesTabProps> = ({
             </button>
           </div>
 
-          <button
-            onClick={toggleRecording}
-            className={`px-3.5 py-2 rounded-2xl font-bold text-xs shadow-xs transition flex items-center gap-1.5 cursor-pointer shrink-0 ${
-              isRecording
-                ? 'bg-rose-500 text-white animate-pulse ring-2 ring-rose-200'
-                : 'bg-teal-500 hover:bg-teal-600 text-white'
-            }`}
-          >
-            {isRecording ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
-            <span>{isRecording ? `Đang nghe (${voiceLanguage})...` : 'Đọc giọng nói'}</span>
-          </button>
+          <div className="flex items-center gap-1.5">
+            <select
+              value={voiceLanguage}
+              onChange={(e) => setVoiceLanguage(e.target.value as any)}
+              disabled={isRecording}
+              className="bg-slate-100 border border-slate-200 rounded-2xl px-2.5 py-2 text-xs font-bold text-slate-700 focus:outline-hidden focus:border-teal-400 cursor-pointer"
+            >
+              <option value="vi-VN">🇻🇳 Tiếng Việt</option>
+              <option value="zh-CN">🇨🇳 Tiếng Trung</option>
+              <option value="zh-TW">🇹🇼 Phồn thể</option>
+            </select>
+
+            <button
+              onClick={toggleRecording}
+              className={`px-3.5 py-2 rounded-2xl font-bold text-xs shadow-xs transition flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                isRecording
+                  ? 'bg-rose-500 text-white animate-pulse ring-2 ring-rose-200'
+                  : 'bg-teal-500 hover:bg-teal-600 text-white'
+              }`}
+            >
+              {isRecording ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
+              <span>{isRecording ? `Dừng ghi âm` : 'Đọc giọng nói'}</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -347,14 +369,32 @@ export const MedicalNotesTab: React.FC<MedicalNotesTabProps> = ({
         <div className="p-3 bg-gradient-to-r from-teal-50 to-emerald-50 border border-teal-200 rounded-2xl flex items-center justify-between text-xs animate-in fade-in">
           <div className="flex items-center space-x-2 text-teal-800">
             <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping shrink-0"></span>
-            <span className="font-bold">Web Speech API đang chép giọng đọc ({voiceLanguage}):</span>
+            <span className="font-bold">Đang nghe {voiceLanguage === 'vi-VN' ? 'Tiếng Việt 🇻🇳' : 'Tiếng Trung 🇨🇳'} & tự động chép vào sổ:</span>
             <span className="italic text-teal-900 font-mono">
-              {interimText ? `"${interimText}"` : 'Đang lắng nghe âm thanh...'}
+              {interimText ? `"${interimText}"` : 'Đang lắng nghe âm thanh... Hãy nói rõ ràng!'}
             </span>
           </div>
           <span className="text-[10px] text-teal-600 bg-white px-2 py-0.5 rounded-md font-semibold border border-teal-100 shrink-0">
             {recordingSeconds}s
           </span>
+        </div>
+      )}
+
+      {/* Notice: Last text written to notebook */}
+      {lastSavedSnippet && (
+        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center justify-between text-xs animate-in fade-in">
+          <div className="flex items-center space-x-2 text-emerald-800">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>
+              <strong className="font-bold">Đã tự động ghi chữ vào Sổ Bệnh Án:</strong> "{lastSavedSnippet}"
+            </span>
+          </div>
+          <button
+            onClick={() => setActiveView('markdown')}
+            className="text-[11px] font-bold text-teal-700 bg-white hover:bg-teal-50 px-2.5 py-1 rounded-lg border border-teal-200 transition cursor-pointer"
+          >
+            Mở xem sổ toàn cảnh →
+          </button>
         </div>
       )}
 

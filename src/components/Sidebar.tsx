@@ -14,7 +14,8 @@ import {
   User,
   LogIn,
   Award,
-  Crown
+  Crown,
+  BookHeart
 } from 'lucide-react';
 import { MoodType, UserProfile, UserCustomization } from '../types';
 import { AVATAR_FRAMES } from '../utils/achievements';
@@ -80,6 +81,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const navItems = [
     { id: 'dashboard', label: 'Phòng Tổng Quát', icon: LayoutDashboard, badge: null },
     { id: 'prescriptions', label: 'Đơn Thuốc (Việc cần làm)', icon: Pill, badge: activeTasksCount > 0 ? activeTasksCount : null },
+    { id: 'study-journal', label: 'Nhật Ký Học Tập', icon: BookHeart, badge: 'Cảm nhận' },
     { id: 'medical-notes', label: 'Hồ Sơ & Bệnh Án', icon: ClipboardPen, badge: null },
     { id: 'pharmacy', label: 'Kho Dược (Web Tiếng Trung)', icon: Library, badge: null },
     { id: 'ai-doctor', label: 'Bác Sĩ Trưởng Khoa AI', icon: Stethoscope, badge: 'Dr. Ling' },

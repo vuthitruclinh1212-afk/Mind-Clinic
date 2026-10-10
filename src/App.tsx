@@ -7,6 +7,7 @@ import { MedicalNotesTab } from './components/MedicalNotesTab';
 import { PharmacyTab } from './components/PharmacyTab';
 import { AiDoctorTab } from './components/AiDoctorTab';
 import { AchievementsTab } from './components/AchievementsTab';
+import { StudyJournalTab } from './components/StudyJournalTab';
 import { SickLeaveModal } from './components/SickLeaveModal';
 import { MusicPlayerModal } from './components/MusicPlayerModal';
 import { AuthModal } from './components/AuthModal';
@@ -28,7 +29,9 @@ import {
   Recurring,
   Transaction,
   Achievement,
-  UserCustomization
+  UserCustomization,
+  PrescriptionFrequency,
+  StudyJournalEntry
 } from './types';
 import { soundEngine } from './utils/audio';
 import { 
@@ -306,6 +309,16 @@ export default function App() {
     }
   });
 
+  // Study Journal State (Nhật Ký Học Tập Độc Lập - Tự Ghi Nhận)
+  const [studyJournalEntries, setStudyJournalEntries] = useState<StudyJournalEntry[]>(() => {
+    try {
+      const saved = localStorage.getItem('mind_clinic_study_journal');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
   // AI Doctor API Linking States (Mỗi bệnh nhân tự liên kết API trước khi dùng)
   const [userApiKey, setUserApiKey] = useState<string>(() => {
     return localStorage.getItem('mind_clinic_user_api_key') || '';
@@ -482,6 +495,11 @@ export default function App() {
         setSavedUnlockedMap(docData.unlockedAchievements);
       }
 
+      // Study Journal Entries
+      if (Array.isArray(docData.studyJournalEntries)) {
+        setStudyJournalEntries(docData.studyJournalEntries);
+      }
+
       // Set flag so future changes can sync safely
       isDataLoadedRef.current = true;
     } catch (err) {
@@ -589,6 +607,7 @@ export default function App() {
         pharmacyItems,
         customization,
         unlockedAchievements: savedUnlockedMap,
+        studyJournalEntries,
         jars,
         recurring,
         transactions,
@@ -600,7 +619,7 @@ export default function App() {
     } catch (err) {
       console.warn('Auto-sync preparation error:', err);
     }
-  }, [tasks, sessions, notes, medicalRecords, pharmacyItems, customization, savedUnlockedMap, jars, recurring, transactions, currentUser]);
+  }, [tasks, sessions, notes, medicalRecords, pharmacyItems, customization, savedUnlockedMap, studyJournalEntries, jars, recurring, transactions, currentUser]);
 
   // Sync to LocalStorage
   useEffect(() => {
@@ -610,6 +629,10 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('mind_clinic_sessions', JSON.stringify(sessions));
   }, [sessions]);
+
+  useEffect(() => {
+    localStorage.setItem('mind_clinic_study_journal', JSON.stringify(studyJournalEntries));
+  }, [studyJournalEntries]);
 
   useEffect(() => {
     localStorage.setItem('mind_clinic_notes', notes);
@@ -755,6 +778,11 @@ export default function App() {
     category: TaskCategory;
     priority: PriorityLevel;
     scheduledTime?: string;
+    startDate?: string;
+    endDate?: string;
+    isLongTerm?: boolean;
+    frequency?: PrescriptionFrequency;
+    durationLabel?: string;
     documentUrl?: string;
     documentName?: string;
     notes?: string;
@@ -769,6 +797,11 @@ export default function App() {
       createdAt: 'Hôm nay',
     };
     if (taskPayload.scheduledTime) newTask.scheduledTime = taskPayload.scheduledTime;
+    if (taskPayload.startDate) newTask.startDate = taskPayload.startDate;
+    if (taskPayload.endDate) newTask.endDate = taskPayload.endDate;
+    if (taskPayload.isLongTerm !== undefined) newTask.isLongTerm = taskPayload.isLongTerm;
+    if (taskPayload.frequency) newTask.frequency = taskPayload.frequency;
+    if (taskPayload.durationLabel) newTask.durationLabel = taskPayload.durationLabel;
     if (taskPayload.documentUrl) newTask.documentUrl = taskPayload.documentUrl;
     if (taskPayload.documentName) newTask.documentName = taskPayload.documentName;
     if (taskPayload.notes) newTask.notes = taskPayload.notes;
@@ -788,6 +821,11 @@ export default function App() {
         createdAt: 'Hôm nay',
       };
       if (t.scheduledTime) taskObj.scheduledTime = t.scheduledTime;
+      if (t.startDate) taskObj.startDate = t.startDate;
+      if (t.endDate) taskObj.endDate = t.endDate;
+      if (t.isLongTerm !== undefined) taskObj.isLongTerm = t.isLongTerm;
+      if (t.frequency) taskObj.frequency = t.frequency;
+      if (t.durationLabel) taskObj.durationLabel = t.durationLabel;
       if (t.documentUrl) taskObj.documentUrl = t.documentUrl;
       if (t.documentName) taskObj.documentName = t.documentName;
       if (t.notes) taskObj.notes = t.notes;
@@ -826,6 +864,48 @@ export default function App() {
 
   const handleTogglePlayMusic = () => {
     setIsPlayingMusic(!isPlayingMusic);
+  };
+
+  const handleNextMusicTrack = () => {
+    if (musicTracks.length === 0) return;
+    const currentIndex = musicTracks.findIndex((t) => t.id === currentTrack?.id);
+    const nextIndex = (currentIndex + 1) % musicTracks.length;
+    const nextTrack = musicTracks[nextIndex];
+    if (nextTrack) {
+      setCurrentTrack(nextTrack);
+      setIsPlayingMusic(true);
+    }
+  };
+
+  const handlePrevMusicTrack = () => {
+    if (musicTracks.length === 0) return;
+    const currentIndex = musicTracks.findIndex((t) => t.id === currentTrack?.id);
+    const prevIndex = (currentIndex - 1 + musicTracks.length) % musicTracks.length;
+    const prevTrack = musicTracks[prevIndex];
+    if (prevTrack) {
+      setCurrentTrack(prevTrack);
+      setIsPlayingMusic(true);
+    }
+  };
+
+  // Study Journal Handlers (Nhật Ký Học Tập - Tự Ghi Nhận)
+  const handleAddJournalEntry = (entry: Omit<StudyJournalEntry, 'id' | 'createdAt'>) => {
+    const newEntry: StudyJournalEntry = {
+      ...entry,
+      id: 'journal-' + Date.now(),
+      createdAt: new Date().toLocaleDateString('vi-VN'),
+    };
+    setStudyJournalEntries((prev) => [newEntry, ...prev]);
+  };
+
+  const handleUpdateJournalEntry = (id: string, updates: Partial<StudyJournalEntry>) => {
+    setStudyJournalEntries((prev) =>
+      prev.map((e) => (e.id === id ? { ...e, ...updates } : e))
+    );
+  };
+
+  const handleDeleteJournalEntry = (id: string) => {
+    setStudyJournalEntries((prev) => prev.filter((e) => e.id !== id));
   };
 
   const handleAddPharmacyItem = (item: Omit<PharmacyItem, 'id'>) => {
@@ -1156,12 +1236,61 @@ export default function App() {
 
       setChatMessages((prev) => [...prev, docMsg]);
     } catch {
+      const lower = messageText.toLowerCase();
+      let replyText = '';
+      let autoRec: MedicalRecord | null = null;
+
+      if (lower.includes('bổ ngữ xu hướng') || lower.includes('xu hướng đơn') || lower.includes('huong don') || lower.includes('xu huong')) {
+        replyText = `🩺 **Chẩn Đoán Ngữ Pháp Của Dr. Ling: Bổ Ngữ Xu Hướng Đơn (单向趋向补语)**
+
+Trong tiếng Trung, **Bổ ngữ xu hướng đơn** dùng để biểu thị hướng di chuyển của hành động hướng về phía người nói hoặc rời xa người nói.
+
+📌 **1. Cấu Trúc:**
+> **Động từ di chuyển + 来 (lái) / 去 (qù)**
+• **来 (Lái):** Hướng lại gần người nói (Ví dụ: **进来！** - Vào đây!).
+• **去 (Qù):** Rời xa phía người nói (Ví dụ: **出去！** - Đi ra ngoài kia!).
+
+⚠️ **2. Vị Trí Của Tân Ngữ (Quy tắc vàng):**
+• **Tân ngữ chỉ NƠI CHỐN / ĐỊA ĐIỂM:** Bắt buộc đứng **TRƯỚC** 来/去.
+  - Đúng: **回家去 (Huí jiā qù)** | **进教室来 (Jìn jiàoshì lái)**
+  - ❌ Sai: *回去家*
+• **Tân ngữ chỉ ĐỒ VẬT:** Có thể đứng trước hoặc sau 来/去.
+  - Đúng: **买了一本书来** hoặc **买来了一本书**
+
+🌿 **Lời Dặn Trị Liệu:** Đặt chính bạn làm trung tâm mốc tọa độ: Tiến về mình dùng **来**, đi xa mình dùng **去**!`;
+
+        autoRec = {
+          id: 'rec-' + Date.now(),
+          title: 'Bổ ngữ xu hướng đơn (Động từ + 来/去)',
+          severity: 'Nghiêm trọng (Rất khó - Cần xử lý trước)',
+          category: 'Ngữ pháp',
+          content: '• Động từ + 来 (tiến lại) / 去 (đi xa)\n• Tân ngữ chỉ địa điểm: BẮT BUỘC đứng trước 来/去 (VD: 回家去).\n• Tân ngữ chỉ vật: Đứng trước hoặc sau đều được (VD: 带来一本书).',
+          createdAt: new Date().toLocaleDateString('vi-VN'),
+          doctorAssigned: true,
+        };
+      } else {
+        replyText = `🩺 **Bác Sĩ Ghi Nhận Triệu Chứng:** "${messageText}"
+
+💊 **Kê Toa Tri Thức & Giải Phẫu Ngôn Ngữ:**
+Trong tiếng Trung, mỗi rào cản ngữ pháp hay từ vựng bạn gặp đều cần tiếp cận bằng hình tượng và ngữ cảnh thực tế, thay vì dịch từng chữ máy móc.
+
+• **Phác đồ đề xuất:** Hãy chia nhỏ câu hỏi thành các thành phần cốt lõi (Chủ ngữ - Động từ - Tân ngữ - Bổ ngữ), sau đó đặt 2-3 câu ví dụ thực tế liên quan đến cuộc sống hàng ngày của bạn.
+• **Lời dặn của Dr. Ling:** Đừng ngại hỏi thêm chi tiết, tôi luôn đồng hành hỗ trợ bạn tra cứu và phân tích bệnh án!`;
+      }
+
       const fallbackMsg: ChatMessage = {
         id: 'doc-' + Date.now(),
         sender: 'doctor',
-        text: `🩺 **Bác Sĩ Ghi Nhận Triệu Chứng:** "${messageText}"\n\n💊 **Kê Toa Chữa Lành:**\nHọc ngoại ngữ là quá trình thẩm thấu tự nhiên. Đừng để bất kỳ đồng hồ áp lực hay mục tiêu cứng nhắc nào làm bạn ngột ngạt. Hãy cứ học êm dịu theo nhịp độ tự nhiên của não bộ nhé!`,
+        text: replyText,
         time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
       };
+
+      if (autoRec) {
+        setMedicalRecords((prev) => [autoRec!, ...prev]);
+        fallbackMsg.newRecordCreated = autoRec;
+        soundEngine.playSuccessChime();
+      }
+
       setChatMessages((prev) => [...prev, fallbackMsg]);
     } finally {
       setIsDoctorLoading(false);
@@ -1193,7 +1322,7 @@ export default function App() {
         <audio
           ref={audioPlayerRef}
           src={currentTrack.url}
-          loop
+          onEnded={handleNextMusicTrack}
           preload="auto"
         />
       )}
@@ -1267,6 +1396,15 @@ export default function App() {
             />
           )}
 
+          {currentTab === 'study-journal' && (
+            <StudyJournalTab
+              entries={studyJournalEntries}
+              onAddEntry={handleAddJournalEntry}
+              onUpdateEntry={handleUpdateJournalEntry}
+              onDeleteEntry={handleDeleteJournalEntry}
+            />
+          )}
+
           {currentTab === 'medical-notes' && (
             <MedicalNotesTab
               notes={notes}
@@ -1337,6 +1475,8 @@ export default function App() {
         onDeleteTrack={handleDeleteMusicTrack}
         isPlaying={isPlayingMusic}
         onTogglePlay={handleTogglePlayMusic}
+        onNextTrack={handleNextMusicTrack}
+        onPrevTrack={handlePrevMusicTrack}
       />
 
       {/* User Authentication & Account Separation Modal */}

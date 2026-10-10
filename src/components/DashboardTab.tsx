@@ -17,6 +17,7 @@ import {
   TrendingUp, 
   Award, 
   Calendar,
+  CalendarRange,
   Zap,
   Info,
   Music,
@@ -512,7 +513,22 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                               </span>
                             )}
                           </div>
-                          <div className="flex items-center gap-2 mt-1">
+                          <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                            {task.isLongTerm ? (
+                              <span className="text-[10px] bg-indigo-50 border border-indigo-200 text-indigo-700 px-1.5 py-0.5 rounded-md font-semibold flex items-center gap-0.5">
+                                <CalendarRange className="w-2.5 h-2.5 text-indigo-600 shrink-0" />
+                                <span>
+                                  {task.startDate ? task.startDate.split('-').slice(1).reverse().join('/') : 'Dài hạn'}
+                                  {task.endDate ? ` → ${task.endDate.split('-').slice(1).reverse().join('/')}` : ''}
+                                </span>
+                              </span>
+                            ) : task.startDate ? (
+                              <span className="text-[10px] bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded-md font-semibold flex items-center gap-0.5">
+                                <Calendar className="w-2.5 h-2.5 text-slate-500 shrink-0" />
+                                <span>{task.startDate.split('-').slice(1).reverse().join('/')}</span>
+                              </span>
+                            ) : null}
+
                             {task.scheduledTime && (
                               <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded-md font-semibold flex items-center gap-0.5">
                                 <Clock className="w-2.5 h-2.5 text-slate-500" />
