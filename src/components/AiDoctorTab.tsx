@@ -7,17 +7,10 @@ import {
   RefreshCw, 
   Copy, 
   Check, 
-  KeyRound, 
-  ShieldCheck, 
   FileCheck, 
   FileText, 
-  Search, 
-  AlertCircle, 
-  Flame, 
-  Lock, 
-  Unlock,
-  ArrowRight,
-  BookmarkCheck
+  BookmarkCheck,
+  ArrowRight
 } from 'lucide-react';
 import { ChatMessage, MedicalRecord, RecordSeverity } from '../types';
 import { soundEngine } from '../utils/audio';
@@ -28,9 +21,9 @@ interface AiDoctorTabProps {
   isLoading: boolean;
   onClearChat: () => void;
   currentMoodLabel: string;
-  isApiLinked: boolean;
-  onLinkApi: (key?: string) => Promise<boolean> | void;
-  onUnlinkApi: () => void;
+  isApiLinked?: boolean;
+  onLinkApi?: (key?: string) => Promise<boolean> | void;
+  onUnlinkApi?: () => void;
   medicalRecords: MedicalRecord[];
   onSaveDoctorDiagnosisToRecord: (title: string, severity: RecordSeverity, category: any, content: string) => void;
   onNavigateToMedicalNotes: () => void;
@@ -60,11 +53,6 @@ export const AiDoctorTab: React.FC<AiDoctorTabProps> = ({
   const [inputText, setInputText] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [savedMessageId, setSavedMessageId] = useState<string | null>(null);
-  const [customApiKey, setCustomApiKey] = useState('');
-  const [showKeyText, setShowKeyText] = useState(false);
-  const [isTestingKey, setIsTestingKey] = useState(false);
-  const [testResult, setTestResult] = useState<{ valid?: boolean; message?: string } | null>(null);
-  const [showKeyGuide, setShowKeyGuide] = useState(false);
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -103,159 +91,6 @@ export const AiDoctorTab: React.FC<AiDoctorTabProps> = ({
     setTimeout(() => setSavedMessageId(null), 3000);
   };
 
-  const handleTestAndLink = async (keyToUse: string) => {
-    setIsTestingKey(true);
-    setTestResult(null);
-    try {
-      const res = await fetch('/api/test-api-key', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apiKey: keyToUse || undefined }),
-      });
-      const data = await res.json();
-      if (data.valid) {
-        setTestResult({ valid: true, message: 'Khóa API hợp lệ! Đang mở cổng khám bệnh...' });
-        soundEngine.playSuccessChime();
-        setTimeout(() => {
-          onLinkApi(keyToUse);
-        }, 600);
-      } else {
-        setTestResult({ valid: false, message: data.error || 'Khóa API không hợp lệ. Vui lòng kiểm tra lại.' });
-      }
-    } catch {
-      // If network check fails, allow direct linking
-      onLinkApi(keyToUse);
-    } finally {
-      setIsTestingKey(false);
-    }
-  };
-
-  // If user hasn't linked API yet, show the Clinic Authorization / Linking Gateway
-  if (!isApiLinked) {
-    return (
-      <section className="h-[calc(100vh-140px)] flex items-center justify-center p-4">
-        <div className="bg-white rounded-3xl max-w-xl w-full border-2 border-teal-200 shadow-xl p-6 sm:p-8 space-y-6 animate-in fade-in zoom-in duration-200 custom-scroll overflow-y-auto max-h-[90vh]">
-          <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-teal-500 to-emerald-400 text-white flex items-center justify-center mx-auto shadow-lg shadow-teal-200">
-            <KeyRound className="w-8 h-8 animate-pulse" />
-          </div>
-
-          <div className="text-center space-y-2">
-            <span className="text-[10px] font-black uppercase tracking-wider text-teal-700 bg-teal-50 px-3 py-1 rounded-full border border-teal-200">
-              Quy Trình Bắt Buộc Trước Khi Sử Dụng
-            </span>
-            <h2 className="text-2xl font-black text-slate-800">
-              Liên Kết API Y Khoa Của Bệnh Nhân
-            </h2>
-            <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
-              Theo quy định của Mind Clinic, mỗi bệnh nhân cần chủ động liên kết API của mình trước để Bác Sĩ Trưởng Khoa có thể trực tiếp tra cứu và ghi chép vào bệnh án khi có yêu cầu.
-            </p>
-          </div>
-
-          {/* User Custom API Key Input Form */}
-          <div className="space-y-3 bg-slate-50 p-4.5 rounded-2xl border border-slate-200">
-            <label className="block text-xs font-bold text-slate-700">
-              Nhập Gemini API Key cá nhân của bạn:
-            </label>
-            <div className="relative">
-              <input
-                type={showKeyText ? 'text' : 'password'}
-                value={customApiKey}
-                onChange={(e) => {
-                  setCustomApiKey(e.target.value);
-                  setTestResult(null);
-                }}
-                placeholder="AIzaSy... (Khóa API từ Google AI Studio)"
-                className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-mono pr-10 focus:outline-hidden focus:border-teal-400"
-              />
-              <button
-                type="button"
-                onClick={() => setShowKeyText(!showKeyText)}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs p-1"
-              >
-                {showKeyText ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
-              </button>
-            </div>
-
-            {testResult && (
-              <div
-                className={`text-xs p-2.5 rounded-xl flex items-center gap-2 ${
-                  testResult.valid
-                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                    : 'bg-rose-50 text-rose-700 border border-rose-200'
-                }`}
-              >
-                {testResult.valid ? (
-                  <Check className="w-4 h-4 shrink-0 text-emerald-600" />
-                ) : (
-                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
-                )}
-                <span>{testResult.message}</span>
-              </div>
-            )}
-
-            <button
-              onClick={() => handleTestAndLink(customApiKey)}
-              disabled={isTestingKey}
-              className="w-full bg-teal-500 hover:bg-teal-600 disabled:opacity-50 text-white font-bold py-2.5 px-4 rounded-xl text-xs shadow-sm shadow-teal-200 transition flex items-center justify-center gap-2 cursor-pointer"
-            >
-              <KeyRound className="w-3.5 h-3.5" />
-              <span>{isTestingKey ? 'Đang kiểm tra kết nối API...' : 'Xác Nhận & Kết Nối API Của Tôi'}</span>
-            </button>
-
-            {/* Quick Clinic Gateway Option */}
-            <div className="pt-2 border-t border-slate-200 flex items-center justify-between text-[11px] text-slate-500">
-              <span>Chưa có API key riêng?</span>
-              <button
-                onClick={() => handleTestAndLink('')}
-                disabled={isTestingKey}
-                className="text-teal-700 hover:underline font-bold cursor-pointer"
-              >
-                Kết nối Cổng AI Cấp Cứu Mặc Định →
-              </button>
-            </div>
-          </div>
-
-          {/* Guide Accordion */}
-          <div className="border border-slate-200 rounded-2xl overflow-hidden">
-            <button
-              type="button"
-              onClick={() => setShowKeyGuide(!showKeyGuide)}
-              className="w-full p-3 bg-white hover:bg-slate-50 flex items-center justify-between text-xs font-bold text-slate-700 text-left transition"
-            >
-              <span className="flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                Hướng dẫn nhận Gemini API Key miễn phí (30 giây)
-              </span>
-              <span className="text-[10px] text-teal-600">{showKeyGuide ? 'Thu gọn' : 'Xem chi tiết'}</span>
-            </button>
-            {showKeyGuide && (
-              <div className="p-3.5 bg-slate-50 text-xs text-slate-600 space-y-2 border-t border-slate-200">
-                <ol className="list-decimal list-inside space-y-1 leading-relaxed">
-                  <li>Truy cập <a href="https://aistudio.google.com" target="_blank" rel="noreferrer" className="text-teal-600 underline font-semibold">aistudio.google.com</a> và đăng nhập Google.</li>
-                  <li>Nhấp nút <strong>"Get API key"</strong> ở thanh menu bên trái.</li>
-                  <li>Chọn <strong>"Create API key"</strong> và sao chép mã khóa (bắt đầu bằng <code>AIzaSy...</code>).</li>
-                  <li>Dán vào ô ở trên và bấm <strong>"Xác Nhận & Kết Nối"</strong>.</li>
-                </ol>
-              </div>
-            )}
-          </div>
-
-          <div className="p-4 bg-teal-50/60 rounded-2xl border border-teal-100 text-left text-xs space-y-2 text-slate-700">
-            <div className="flex items-center space-x-2 text-teal-800 font-bold">
-              <ShieldCheck className="w-4 h-4 text-teal-600" />
-              <span>Đặc Quyền Của Bác Sĩ Sau Khi Liên Kết API:</span>
-            </div>
-            <ul className="space-y-1 text-slate-600 list-disc list-inside text-[11px]">
-              <li>Trực tiếp tra cứu {medicalRecords.length} hồ sơ bệnh án hiện có của bạn.</li>
-              <li>Tự động ghi chép và đánh giá mức độ nghiêm trọng (khó/dễ) thay bạn.</li>
-              <li>Chẩn đoán phân biệt từ vựng, mẹo nhớ chữ Hán không gò bó.</li>
-            </ul>
-          </div>
-        </div>
-      </section>
-    );
-  }
-
   return (
     <section className="h-[calc(100vh-140px)] flex flex-col bg-white rounded-3xl border border-teal-100 shadow-sm overflow-hidden">
       {/* AI Doctor Header with API Status */}
@@ -267,25 +102,18 @@ export const AiDoctorTab: React.FC<AiDoctorTabProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <h3 className="font-bold text-slate-800 text-sm">Dr. Ling (Trưởng Khoa Ngôn Ngữ & Trị Liệu AI)</h3>
-              <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
-                Đã liên kết API y tế
+              <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full flex items-center gap-1.5 border border-emerald-200">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                Trực tuyến • Tùy biến mọi câu hỏi
               </span>
             </div>
             <p className="text-xs text-teal-700">
-              Có quyền tra cứu & ghi chép bệnh án tự động • {medicalRecords.length} hồ sơ bệnh án kết nối • Năng lượng: {currentMoodLabel}
+              Giải thích ngữ pháp, chữ Hán, phát âm & tra cứu {medicalRecords.length} hồ sơ bệnh án • Năng lượng: {currentMoodLabel}
             </p>
           </div>
         </div>
 
         <div className="flex items-center space-x-1">
-          <button
-            onClick={onUnlinkApi}
-            title="Ngắt liên kết phiên khám API"
-            className="text-[11px] text-slate-400 hover:text-rose-500 px-2 py-1 rounded-lg hover:bg-slate-50 transition cursor-pointer"
-          >
-            Ngắt liên kết
-          </button>
           <button
             onClick={onClearChat}
             title="Làm mới cuộc trò chuyện"

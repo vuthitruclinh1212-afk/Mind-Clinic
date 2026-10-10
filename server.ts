@@ -115,9 +115,10 @@ app.post('/api/ai-doctor', async (req, res) => {
       ? medicalRecords.map((r: any, idx: number) => `[Hồ sơ ${idx + 1}] Tiêu đề: "${r.title}", Mức độ khó/nghiêm trọng: ${r.severity}, Chuyên mục: ${r.category}, Nội dung: ${r.content}`).join('\n')
       : 'Bệnh nhân hiện chưa có hồ sơ bệnh án nào trước đó.';
 
-    // Choose client: user provided key takes priority, else system key
-    const activeAi = userApiKey 
-      ? new GoogleGenAI({ apiKey: userApiKey, httpOptions: { headers: { 'User-Agent': 'aistudio-build' } } }) 
+    // Choose client: user provided key or system GEMINI_API_KEY
+    const activeApiKey = userApiKey || process.env.GEMINI_API_KEY;
+    const activeAi = activeApiKey 
+      ? new GoogleGenAI({ apiKey: activeApiKey, httpOptions: { headers: { 'User-Agent': 'aistudio-build' } } }) 
       : ai;
 
     // If Gemini client is available, attempt Gemini call with timeout and graceful fallback
@@ -125,13 +126,14 @@ app.post('/api/ai-doctor', async (req, res) => {
       const systemInstruction = `Bạn là "Dr. Ling - Bác Sĩ Trưởng Khoa Ngôn Ngữ & Trị Liệu Học Tập" tại Bệnh Viện Tâm Trí "Mind Clinic".
 Phong cách:
 - Ấm áp, thấu hiểu, ân cần, phong thái danh y ngôn ngữ học, trị liệu áp lực học tập.
+- Trả lời TÙY BIẾN CHÍNH XÁC THEO MỌI CÂU HỎI của bệnh nhân: giải thích cặn kẽ mọi câu hỏi về ngữ pháp, chữ Hán, dịch câu, sửa lỗi, từ vựng, mẹo học, phát âm, hoặc bất kỳ thắc mắc học tập nào. Tuyệt đối không trả lời chung chung hoặc rập khuôn một câu.
 - Triết lý: Loại bỏ gò bó của Pomodoro, học theo nhịp độ tự nhiên (Flow-time).
 - Danh sách Hồ Sơ Bệnh Án hiện tại của bệnh nhân (bạn có quyền trực tiếp tra cứu, đối chiếu và tổng hợp):
 ${recordsSummary}
 
 Nhiệm vụ đặc biệt:
 1. Khi bệnh nhân hỏi hoặc yêu cầu tra cứu kiến thức đã học trước đó (ví dụ: "tôi đã học những gì", "tìm hồ sơ về...", "tôi đã lưu kiến thức nào"), hãy trực tiếp tra cứu trong danh sách Hồ Sơ Bệnh Án ở trên, liệt kê và giải đáp cặn kẽ cho bệnh nhân.
-2. Khi bệnh nhân yêu cầu bạn giải thích ngữ pháp hay chữ Hán (như bổ ngữ xu hướng, câu chữ 把, trợ từ...), bạn hãy giải thích cặn kẽ, đầy đủ cấu trúc, phiên âm Pinyin, chữ Hán và các trường hợp lưu ý (như vị trí của tân ngữ).
+2. Trả lời chi tiết, dễ hiểu, có phiên âm Pinyin, chữ Hán và ví dụ sinh động cho từng câu hỏi cụ thể của người học.
 3. Đánh giá chính xác mức độ khó/nghiêm trọng (1 trong 3 mức: 'Nghiêm trọng (Rất khó - Cần xử lý trước)', 'Trung bình (Cần theo dõi)', 'Nhẹ (Dễ - Đã ổn định)').
 Khi cần ghi chép tạo bệnh án mới, bạn đính kèm khối JSON sau ở CUỐI câu trả lời:
 <<<RECORD>>>
@@ -147,7 +149,7 @@ Tâm trạng hiện tại của người học: "${mood}".`;
 
       try {
         const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Gemini API timeout')), 6500)
+          setTimeout(() => reject(new Error('Gemini API timeout')), 35000)
         );
 
         const apiPromise = (async () => {
@@ -160,7 +162,8 @@ Tâm trạng hiện tại của người học: "${mood}".`;
                 temperature: 0.7,
               },
             });
-          } catch {
+          } catch (modelErr) {
+            console.warn('Fallback to gemini-3.1-flash-lite:', modelErr);
             return await activeAi.models.generateContent({
               model: 'gemini-3.1-flash-lite',
               contents: message,

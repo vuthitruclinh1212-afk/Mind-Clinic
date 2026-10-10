@@ -319,14 +319,12 @@ export default function App() {
     }
   });
 
-  // AI Doctor API Linking States (Mỗi bệnh nhân tự liên kết API trước khi dùng)
+  // AI Doctor API Linking States (Luôn sẵn sàng trực tuyến)
   const [userApiKey, setUserApiKey] = useState<string>(() => {
     return localStorage.getItem('mind_clinic_user_api_key') || '';
   });
 
-  const [isApiLinked, setIsApiLinked] = useState<boolean>(() => {
-    return localStorage.getItem('mind_clinic_api_linked') === 'true';
-  });
+  const [isApiLinked, setIsApiLinked] = useState<boolean>(true);
 
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>(() => {
     return [
