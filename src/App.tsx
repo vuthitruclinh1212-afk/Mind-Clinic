@@ -836,6 +836,11 @@ export default function App() {
     setTasks(tasks.filter((t) => t.id !== id));
   };
 
+  const handleUpdateTask = (updatedTask: Task) => {
+    setTasks((prev) => prev.map((t) => (t.id === updatedTask.id ? updatedTask : t)));
+    soundEngine.playSuccessChime();
+  };
+
   const handleAddMusicTrack = (track: Omit<MusicTrack, 'id'>) => {
     const newTrack: MusicTrack = {
       ...track,
@@ -1390,6 +1395,7 @@ Trong tiếng Trung, mỗi rào cản ngữ pháp hay từ vựng bạn gặp đ
               onAddTask={handleAddTask}
               onToggleTask={handleToggleTask}
               onDeleteTask={handleDeleteTask}
+              onUpdateTask={handleUpdateTask}
               onAddMultipleTasks={handleAddMultipleTasks}
             />
           )}
