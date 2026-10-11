@@ -31,7 +31,10 @@ import {
   X,
   Check,
   LayoutGrid,
-  List
+  List,
+  MoveHorizontal,
+  Palette,
+  Timer
 } from 'lucide-react';
 import { Task, DosageType, TaskCategory, PriorityLevel, PrescriptionFrequency } from '../types';
 import { soundEngine } from '../utils/audio';
@@ -42,6 +45,9 @@ export interface AddTaskPayload {
   category: TaskCategory;
   priority: PriorityLevel;
   scheduledTime?: string;
+  endTime?: string;
+  durationMinutes?: number;
+  color?: string;
   startDate?: string;
   endDate?: string;
   isLongTerm?: boolean;
@@ -108,6 +114,111 @@ export const formatIsoDate = (d: Date) => {
   return `${year}-${month}-${day}`;
 };
 
+// ================= COLOR OPTIONS & PRIORITY BORDER CONFIG =================
+export interface TaskColorOption {
+  id: string;
+  name: string;
+  bgHex: string;
+  textHex: string;
+  borderHex: string;
+  badgeBg: string;
+}
+
+export const TASK_COLOR_PALETTES: TaskColorOption[] = [
+  { id: 'teal', name: 'Thanh Ngọc (Xanh ngọc)', bgHex: '#f0fdfa', textHex: '#134e4a', borderHex: '#99f6e4', badgeBg: '#ccfbf1' },
+  { id: 'mint', name: 'Bạc Hà (Xanh thảo mộc)', bgHex: '#ecfdf5', textHex: '#065f46', borderHex: '#a7f3d0', badgeBg: '#d1fae5' },
+  { id: 'sky', name: 'Lam Hàn (Xanh biển dịu)', bgHex: '#f0f9ff', textHex: '#075985', borderHex: '#bae6fd', badgeBg: '#e0f2fe' },
+  { id: 'lavender', name: 'Tử Đằng (Tím oải hương)', bgHex: '#faf5ff', textHex: '#581c87', borderHex: '#e9d5ff', badgeBg: '#f3e8ff' },
+  { id: 'rose', name: 'Đào Hoa (Hồng phấn)', bgHex: '#fff1f2', textHex: '#881337', borderHex: '#fecdd3', badgeBg: '#ffe4e6' },
+  { id: 'amber', name: 'Hoàng Cúc (Cam ấm áp)', bgHex: '#fffbeb', textHex: '#78350f', borderHex: '#fde68a', badgeBg: '#fef3c7' },
+  { id: 'indigo', name: 'Chàm Cổ Phong (Indigo)', bgHex: '#eef2ff', textHex: '#312e81', borderHex: '#c7d2fe', badgeBg: '#e0e7ff' },
+  { id: 'slate', name: 'Mặc Ngọc (Xám tĩnh lặng)', bgHex: '#f8fafc', textHex: '#1e293b', borderHex: '#cbd5e1', badgeBg: '#f1f5f9' },
+];
+
+// 4 lựa chọn trên hình đổi thành màu khung viền của đầu việc
+export const PRIORITY_BORDER_CONFIG: Record<PriorityLevel, {
+  borderClass: string;
+  borderColor: string;
+  label: string;
+  shortLabel: string;
+  dotColor: string;
+  textColor: string;
+}> = {
+  'Bắt buộc uống (Khẩn cấp)': {
+    borderClass: 'border-2 border-rose-500 shadow-xs shadow-rose-200',
+    borderColor: '#f43f5e',
+    label: '🔴 Viền Đỏ: Bắt buộc uống (Khẩn cấp)',
+    shortLabel: 'Viền Đỏ Khẩn Cấp',
+    dotColor: '#f43f5e',
+    textColor: 'text-rose-700',
+  },
+  'Quan trọng (Uống trước)': {
+    borderClass: 'border-2 border-amber-500 shadow-xs shadow-amber-200',
+    borderColor: '#f59e0b',
+    label: '🟡 Viền Vàng: Quan trọng (Uống trước)',
+    shortLabel: 'Viền Vàng Quan Trọng',
+    dotColor: '#f59e0b',
+    textColor: 'text-amber-700',
+  },
+  'Bình thường': {
+    borderClass: 'border-2 border-emerald-500 shadow-xs shadow-emerald-200',
+    borderColor: '#10b981',
+    label: '🟢 Viền Xanh lá: Bình thường',
+    shortLabel: 'Viền Xanh Bình Thường',
+    dotColor: '#10b981',
+    textColor: 'text-emerald-700',
+  },
+  'Tùy chọn / Thư giãn': {
+    borderClass: 'border-2 border-slate-300 shadow-xs shadow-slate-200',
+    borderColor: '#cbd5e1',
+    label: '⚪ Viền Xám: Tùy chọn / Thư giãn',
+    shortLabel: 'Viền Xám Tùy Chọn',
+    dotColor: '#94a3b8',
+    textColor: 'text-slate-600',
+  },
+};
+
+export const getTaskColorStyle = (colorId?: string): React.CSSProperties => {
+  if (!colorId) return { backgroundColor: '#ffffff', color: '#1e293b' };
+  const found = TASK_COLOR_PALETTES.find((c) => c.id === colorId);
+  if (found) return { backgroundColor: found.bgHex, color: found.textHex };
+  if (colorId.startsWith('#')) return { backgroundColor: colorId, color: '#0f172a' };
+  return { backgroundColor: '#ffffff', color: '#1e293b' };
+};
+
+export const calculateEndTime = (startTime: string, durationMinutes: number): string => {
+  if (!startTime) return '';
+  const [hStr, mStr] = startTime.split(':');
+  const h = parseInt(hStr, 10) || 0;
+  const m = parseInt(mStr, 10) || 0;
+  const totalMinutes = h * 60 + m + (durationMinutes || 0);
+  const normalizedMinutes = totalMinutes % (24 * 60);
+  const endH = Math.floor(normalizedMinutes / 60);
+  const endM = normalizedMinutes % 60;
+  return `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
+};
+
+export const calculateDurationFromTimes = (startTime: string, endTime: string): number => {
+  if (!startTime || !endTime) return 30;
+  const [sh, sm] = startTime.split(':').map((v) => parseInt(v, 10) || 0);
+  const [eh, em] = endTime.split(':').map((v) => parseInt(v, 10) || 0);
+  let startTotal = sh * 60 + sm;
+  let endTotal = eh * 60 + em;
+  if (endTotal < startTotal) {
+    endTotal += 24 * 60;
+  }
+  return Math.max(1, endTotal - startTotal);
+};
+
+export const formatDurationText = (minutes?: number): string => {
+  if (!minutes || minutes <= 0) return '';
+  if (minutes < 60) return `${minutes} phút`;
+  const hours = Math.floor(minutes / 60);
+  const remMinutes = minutes % 60;
+  if (remMinutes === 0) return `${hours} giờ`;
+  return `${hours} giờ ${remMinutes} phút`;
+};
+
 export const PrescriptionsTab: React.FC<PrescriptionsTabProps> = ({
   tasks,
   onAddTask,
@@ -119,6 +230,41 @@ export const PrescriptionsTab: React.FC<PrescriptionsTabProps> = ({
   // DOM Refs for smooth scrolling & focus
   const formRef = useRef<HTMLDivElement>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // Drag-to-scroll horizontal state for week calendar
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStartX, setDragStartX] = useState(0);
+  const [scrollLeftState, setScrollLeftState] = useState(0);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.closest('button, input, select, textarea, a')) return;
+    setIsDragging(true);
+    if (scrollContainerRef.current) {
+      setDragStartX(e.pageX - scrollContainerRef.current.offsetLeft);
+      setScrollLeftState(scrollContainerRef.current.scrollLeft);
+    }
+  };
+
+  const handleMouseLeave = () => setIsDragging(false);
+  const handleMouseUp = () => setIsDragging(false);
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging || !scrollContainerRef.current) return;
+    e.preventDefault();
+    const x = e.pageX - scrollContainerRef.current.offsetLeft;
+    const walk = (x - dragStartX) * 1.5;
+    scrollContainerRef.current.scrollLeft = scrollLeftState - walk;
+  };
+
+  const scrollLeftSmooth = () => {
+    scrollContainerRef.current?.scrollBy({ left: -450, behavior: 'smooth' });
+  };
+
+  const scrollRightSmooth = () => {
+    scrollContainerRef.current?.scrollBy({ left: 450, behavior: 'smooth' });
+  };
 
   // Today's date string YYYY-MM-DD
   const todayStr = useMemo(() => {
@@ -143,8 +289,13 @@ export const PrescriptionsTab: React.FC<PrescriptionsTabProps> = ({
   const [title, setTitle] = useState('');
   const [dosage, setDosage] = useState<DosageType>('Liều nhẹ (5 - 10 phút)');
   const [category, setCategory] = useState<TaskCategory>('Hán tự (Hanzi)');
-  const [priority, setPriority] = useState<PriorityLevel>('Bình thường');
-  const [scheduledTime, setScheduledTime] = useState('09:00');
+  const [priority, setPriority] = useState<PriorityLevel>('Bình thường'); // 4 lựa chọn trên hình -> màu khung viền
+  const [taskColor, setTaskColor] = useState<string>('teal'); // Chức năng chọn màu cho đầu việc theo sở thích
+  
+  // Time States: Giờ bắt đầu, thời lượng từng phút, giờ kết thúc dự kiến
+  const [scheduledTime, setScheduledTime] = useState('14:00');
+  const [durationMinutes, setDurationMinutes] = useState<number>(120); // Mặc định 2 tiếng, tự do sửa từng phút
+  const [endTime, setEndTime] = useState('16:00'); // Tự động tính 14:00 -> 16:00
   
   // Date & Long-Term States
   const [isLongTerm, setIsLongTerm] = useState(true);
@@ -164,6 +315,30 @@ export const PrescriptionsTab: React.FC<PrescriptionsTabProps> = ({
   const [weekOffset, setWeekOffset] = useState<number>(0);
   const [slotNotice, setSlotNotice] = useState<{ date: string; time: string } | null>(null);
 
+  // Time change helpers for Form
+  const handleStartTimeChange = (newStart: string) => {
+    setScheduledTime(newStart);
+    if (newStart) {
+      setEndTime(calculateEndTime(newStart, durationMinutes));
+    }
+  };
+
+  const handleDurationMinutesChange = (newMinutes: number) => {
+    const val = Math.max(1, newMinutes || 1);
+    setDurationMinutes(val);
+    if (scheduledTime) {
+      setEndTime(calculateEndTime(scheduledTime, val));
+    }
+  };
+
+  const handleEndTimeChange = (newEnd: string) => {
+    setEndTime(newEnd);
+    if (scheduledTime && newEnd) {
+      const dur = calculateDurationFromTimes(scheduledTime, newEnd);
+      setDurationMinutes(dur);
+    }
+  };
+
   // Edit Task States
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editForm, setEditForm] = useState<{
@@ -171,7 +346,10 @@ export const PrescriptionsTab: React.FC<PrescriptionsTabProps> = ({
     dosage: DosageType;
     category: TaskCategory;
     priority: PriorityLevel;
+    color: string;
     scheduledTime: string;
+    endTime: string;
+    durationMinutes: number;
     startDate: string;
     endDate: string;
     isLongTerm: boolean;
@@ -185,7 +363,10 @@ export const PrescriptionsTab: React.FC<PrescriptionsTabProps> = ({
     dosage: 'Liều nhẹ (5 - 10 phút)',
     category: 'Hán tự (Hanzi)',
     priority: 'Bình thường',
-    scheduledTime: '09:00',
+    color: 'teal',
+    scheduledTime: '14:00',
+    endTime: '16:00',
+    durationMinutes: 120,
     startDate: todayStr,
     endDate: defaultEndDate,
     isLongTerm: true,
@@ -195,6 +376,34 @@ export const PrescriptionsTab: React.FC<PrescriptionsTabProps> = ({
     documentName: '',
     notes: '',
   });
+
+  const handleEditStartTimeChange = (newStart: string) => {
+    setEditForm((prev) => ({
+      ...prev,
+      scheduledTime: newStart,
+      endTime: newStart ? calculateEndTime(newStart, prev.durationMinutes) : prev.endTime,
+    }));
+  };
+
+  const handleEditDurationMinutesChange = (newMinutes: number) => {
+    const val = Math.max(1, newMinutes || 1);
+    setEditForm((prev) => ({
+      ...prev,
+      durationMinutes: val,
+      endTime: prev.scheduledTime ? calculateEndTime(prev.scheduledTime, val) : prev.endTime,
+    }));
+  };
+
+  const handleEditEndTimeChange = (newEnd: string) => {
+    setEditForm((prev) => {
+      const dur = prev.scheduledTime && newEnd ? calculateDurationFromTimes(prev.scheduledTime, newEnd) : prev.durationMinutes;
+      return {
+        ...prev,
+        endTime: newEnd,
+        durationMinutes: dur,
+      };
+    });
+  };
 
   // Filter & Sort States
   const [filter, setFilter] = useState<'all' | 'longterm' | 'active' | 'done' | 'urgent'>('all');
@@ -287,13 +496,22 @@ export const PrescriptionsTab: React.FC<PrescriptionsTabProps> = ({
 
   // Edit Task handlers
   const handleStartEdit = (task: Task) => {
+    const taskStart = task.scheduledTime || '14:00';
+    const taskDur = task.durationMinutes !== undefined 
+      ? task.durationMinutes 
+      : (task.endTime ? calculateDurationFromTimes(taskStart, task.endTime) : 120);
+    const taskEnd = task.endTime || calculateEndTime(taskStart, taskDur);
+
     setEditingTask(task);
     setEditForm({
       title: task.title,
       dosage: task.dosage,
       category: task.category,
       priority: task.priority,
-      scheduledTime: task.scheduledTime || '09:00',
+      color: task.color || 'teal',
+      scheduledTime: taskStart,
+      endTime: taskEnd,
+      durationMinutes: taskDur,
       startDate: task.startDate || todayStr,
       endDate: task.endDate || '',
       isLongTerm: Boolean(task.isLongTerm),
@@ -320,7 +538,10 @@ export const PrescriptionsTab: React.FC<PrescriptionsTabProps> = ({
       dosage: editForm.dosage,
       category: editForm.category,
       priority: editForm.priority,
+      color: editForm.color,
       scheduledTime: editForm.scheduledTime.trim() || undefined,
+      endTime: editForm.endTime.trim() || undefined,
+      durationMinutes: editForm.durationMinutes > 0 ? editForm.durationMinutes : undefined,
       startDate: editForm.startDate || todayStr,
       isLongTerm: editForm.isLongTerm,
       endDate: editForm.isLongTerm && editForm.endDate.trim() ? editForm.endDate.trim() : undefined,
@@ -370,6 +591,7 @@ export const PrescriptionsTab: React.FC<PrescriptionsTabProps> = ({
       dosage,
       category,
       priority,
+      color: taskColor,
       isLongTerm,
       startDate: startDate || todayStr,
       frequency: isLongTerm ? frequency : undefined,
@@ -381,6 +603,12 @@ export const PrescriptionsTab: React.FC<PrescriptionsTabProps> = ({
     }
     if (scheduledTime.trim()) {
       payload.scheduledTime = scheduledTime.trim();
+    }
+    if (endTime.trim()) {
+      payload.endTime = endTime.trim();
+    }
+    if (durationMinutes > 0) {
+      payload.durationMinutes = durationMinutes;
     }
     if (formattedDocUrl) {
       payload.documentUrl = formattedDocUrl;
@@ -644,39 +872,205 @@ export const PrescriptionsTab: React.FC<PrescriptionsTabProps> = ({
             </button>
           </div>
 
-          {/* Main Primary Row: Name, Dosage, Priority */}
+          {/* Main Primary Row: Name, Dosage, Priority Border */}
           <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
-            <input
-              ref={titleInputRef}
-              type="text"
-              required
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Tên đơn thuốc / Phác đồ (ví dụ: Nhai 5 chữ Hán bộ Mộc, Đọc 1 bài hội thoại...)"
-              className="md:col-span-6 bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm text-slate-800 placeholder:text-slate-400 font-medium focus:outline-hidden focus:border-teal-400 focus:bg-white transition"
-            />
+            <div className="md:col-span-5">
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Tên đơn thuốc / Phác đồ <span className="text-rose-500">*</span>
+              </label>
+              <input
+                ref={titleInputRef}
+                type="text"
+                required
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Ví dụ: Học 5 chữ Hán bộ Mộc, Đọc 1 bài hội thoại..."
+                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 font-medium focus:outline-hidden focus:border-teal-400 focus:bg-white transition"
+              />
+            </div>
 
-            <select
-              value={dosage}
-              onChange={(e) => setDosage(e.target.value as DosageType)}
-              className="md:col-span-3 bg-slate-50 border border-slate-200 rounded-2xl px-3 py-3 text-xs focus:outline-hidden focus:border-teal-400 text-slate-800 font-semibold"
-            >
-              <option value="Liều nhẹ (5 - 10 phút)">Liều nhẹ (5 - 10p)</option>
-              <option value="Liều vừa (20 - 30 phút)">Liều vừa (20 - 30p)</option>
-              <option value="Liều cao (Chuyên sâu)">Liều cao (Chuyên sâu)</option>
-              <option value="Vitamin Bổ Não (Ôn tập hàng ngày)">Vitamin Bổ Não (Ôn tập)</option>
-            </select>
+            <div className="md:col-span-3">
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Liều lượng học
+              </label>
+              <select
+                value={dosage}
+                onChange={(e) => setDosage(e.target.value as DosageType)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-3 py-2.5 text-xs focus:outline-hidden focus:border-teal-400 text-slate-800 font-semibold cursor-pointer"
+              >
+                <option value="Liều nhẹ (5 - 10 phút)">Liều nhẹ (5 - 10p)</option>
+                <option value="Liều vừa (20 - 30 phút)">Liều vừa (20 - 30p)</option>
+                <option value="Liều cao (Chuyên sâu)">Liều cao (Chuyên sâu)</option>
+                <option value="Vitamin Bổ Não (Ôn tập hàng ngày)">Vitamin Bổ Não (Ôn tập)</option>
+              </select>
+            </div>
 
-            <select
-              value={priority}
-              onChange={(e) => setPriority(e.target.value as PriorityLevel)}
-              className="md:col-span-3 bg-slate-50 border border-slate-200 rounded-2xl px-3 py-3 text-xs focus:outline-hidden focus:border-teal-400 text-slate-800 font-semibold"
-            >
-              <option value="Bắt buộc uống (Khẩn cấp)">🔴 Bắt buộc uống (Khẩn cấp)</option>
-              <option value="Quan trọng (Uống trước)">🟡 Quan trọng (Uống trước)</option>
-              <option value="Bình thường">🟢 Bình thường</option>
-              <option value="Tùy chọn / Thư giãn">⚪ Tùy chọn / Thư giãn</option>
-            </select>
+            <div className="md:col-span-4">
+              <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
+                <span>Màu khung viền của đầu việc:</span>
+                <span className="text-[10px] font-normal text-slate-400">(4 mức ưu tiên)</span>
+              </label>
+              <select
+                value={priority}
+                onChange={(e) => setPriority(e.target.value as PriorityLevel)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-3 py-2.5 text-xs focus:outline-hidden focus:border-teal-400 text-slate-800 font-bold cursor-pointer"
+              >
+                <option value="Bắt buộc uống (Khẩn cấp)">🔴 Viền Đỏ: Bắt buộc uống (Khẩn cấp)</option>
+                <option value="Quan trọng (Uống trước)">🟡 Viền Vàng: Quan trọng (Uống trước)</option>
+                <option value="Bình thường">🟢 Viền Xanh lá: Bình thường</option>
+                <option value="Tùy chọn / Thư giãn">⚪ Viền Xám: Tùy chọn / Thư giãn</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Section: Chọn màu cho đầu việc theo sở thích */}
+          <div className="p-3.5 bg-slate-50/80 border border-slate-200 rounded-2xl space-y-2">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
+                <Palette className="w-4 h-4 text-teal-600" />
+                <span>Màu sắc đầu việc (Tùy chọn theo sở thích):</span>
+              </div>
+              <span className="text-[11px] text-slate-400">
+                Chọn màu nền phác đồ bạn yêu thích — Khung viền vẫn giữ theo mức độ ưu tiên
+              </span>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 pt-0.5">
+              {TASK_COLOR_PALETTES.map((c) => {
+                const isSelected = taskColor === c.id;
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => setTaskColor(c.id)}
+                    style={{ backgroundColor: c.bgHex, color: c.textHex, borderColor: isSelected ? c.textHex : c.borderHex }}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition flex items-center gap-1.5 cursor-pointer shadow-2xs hover:scale-105 ${
+                      isSelected ? 'ring-2 ring-teal-400 font-extrabold shadow-sm' : 'opacity-85 hover:opacity-100'
+                    }`}
+                  >
+                    <span className="w-3 h-3 rounded-full border border-black/10 shrink-0" style={{ backgroundColor: c.textHex }} />
+                    <span>{c.name}</span>
+                    {isSelected && <Check className="w-3.5 h-3.5 shrink-0" />}
+                  </button>
+                );
+              })}
+
+              {/* Custom Color Input */}
+              <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-2.5 py-1 text-xs">
+                <input
+                  type="color"
+                  value={taskColor.startsWith('#') ? taskColor : '#f0fdfa'}
+                  onChange={(e) => setTaskColor(e.target.value)}
+                  className="w-6 h-6 rounded-lg cursor-pointer border-0 p-0"
+                  title="Tự chọn mã màu bất kỳ"
+                />
+                <span className="text-[11px] font-semibold text-slate-600">Tự pha màu</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Section: Hẹn Giờ Bắt Đầu & Kết Thúc Dự Kiến (Sửa Từng Phút) */}
+          <div className="p-4 bg-teal-50/40 border border-teal-200/80 rounded-2xl space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+              <div className="flex items-center gap-2">
+                <Timer className="w-4 h-4 text-teal-600" />
+                <span className="text-xs font-bold text-teal-950">
+                  Hẹn giờ bắt đầu & Kết thúc dự kiến (Tùy chỉnh tự do từng phút):
+                </span>
+              </div>
+              <span className="text-[11px] font-bold text-teal-800 bg-teal-100/90 px-3 py-0.5 rounded-full border border-teal-200">
+                ⏱️ {scheduledTime} ➔ {endTime} ({formatDurationText(durationMinutes)})
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* 1. Start Time */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1 flex items-center gap-1">
+                  <Clock className="w-3.5 h-3.5 text-teal-600" />
+                  <span>1. Giờ bắt đầu:</span>
+                </label>
+                <div className="flex items-center bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs shadow-2xs">
+                  <input
+                    type="time"
+                    value={scheduledTime}
+                    onChange={(e) => handleStartTimeChange(e.target.value)}
+                    className="bg-transparent text-slate-800 font-bold focus:outline-hidden w-full cursor-pointer text-sm font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* 2. Duration in Minutes (Customizable freely) */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1 flex items-center gap-1">
+                  <Timer className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>2. Thời gian hoàn thành (Tự do sửa từng phút):</span>
+                </label>
+                <div className="flex items-center bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs gap-2 shadow-2xs">
+                  <input
+                    type="number"
+                    min="1"
+                    max="1440"
+                    value={durationMinutes}
+                    onChange={(e) => handleDurationMinutesChange(parseInt(e.target.value) || 1)}
+                    className="w-16 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-slate-900 font-bold text-sm focus:outline-hidden text-center"
+                  />
+                  <span className="font-semibold text-slate-500 text-xs">phút</span>
+                  <span className="text-[11px] text-teal-700 font-bold ml-auto font-mono">
+                    = {formatDurationText(durationMinutes)}
+                  </span>
+                </div>
+              </div>
+
+              {/* 3. End Time */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1 flex items-center gap-1">
+                  <Clock className="w-3.5 h-3.5 text-rose-500" />
+                  <span>3. Giờ kết thúc dự kiến:</span>
+                </label>
+                <div className="flex items-center bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs shadow-2xs">
+                  <input
+                    type="time"
+                    value={endTime}
+                    onChange={(e) => handleEndTimeChange(e.target.value)}
+                    className="bg-transparent text-slate-800 font-bold focus:outline-hidden w-full cursor-pointer text-sm font-mono text-rose-700"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Preset Chips for Duration */}
+            <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-teal-100/80">
+              <span className="text-[11px] font-bold text-teal-900 mr-1">Chọn nhanh thời lượng:</span>
+              {[
+                { label: '17 phút', minutes: 17, custom: true },
+                { label: '30 phút', minutes: 30, custom: false },
+                { label: '36 phút', minutes: 36, custom: true },
+                { label: '45 phút', minutes: 45, custom: false },
+                { label: '1 tiếng (60p)', minutes: 60, custom: false },
+                { label: '1.5 tiếng (90p)', minutes: 90, custom: false },
+                { label: '2 tiếng (120p)', minutes: 120, custom: true },
+                { label: '3 tiếng (180p)', minutes: 180, custom: false },
+              ].map((preset) => {
+                const isSelected = durationMinutes === preset.minutes;
+                return (
+                  <button
+                    key={preset.minutes}
+                    type="button"
+                    onClick={() => handleDurationMinutesChange(preset.minutes)}
+                    className={`text-[11px] px-2.5 py-1 rounded-lg font-bold transition cursor-pointer border ${
+                      isSelected
+                        ? 'bg-teal-600 text-white border-teal-600 shadow-xs'
+                        : preset.custom
+                        ? 'bg-white hover:bg-teal-50 text-teal-800 border-teal-300 ring-1 ring-teal-200'
+                        : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {/* Section: Long-Term Dates & Schedule */}
@@ -697,7 +1091,7 @@ export const PrescriptionsTab: React.FC<PrescriptionsTabProps> = ({
                 </span>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                 <div>
                   <label className="block text-[11px] font-bold text-slate-700 mb-1 flex items-center gap-1">
                     <Calendar className="w-3 h-3 text-indigo-600" />
@@ -726,22 +1120,6 @@ export const PrescriptionsTab: React.FC<PrescriptionsTabProps> = ({
                     }}
                     className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 font-semibold focus:outline-hidden focus:border-indigo-400 cursor-pointer"
                   />
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1 flex items-center gap-1">
-                    <Clock className="w-3 h-3 text-teal-600" />
-                    <span>Giờ uống trong ngày:</span>
-                  </label>
-                  <div className="flex items-center bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs">
-                    <Clock className="w-3.5 h-3.5 text-slate-400 mr-1.5 shrink-0" />
-                    <input
-                      type="time"
-                      value={scheduledTime}
-                      onChange={(e) => setScheduledTime(e.target.value)}
-                      className="bg-transparent text-slate-800 font-bold focus:outline-hidden w-full cursor-pointer"
-                    />
-                  </div>
                 </div>
 
                 <div>
@@ -820,11 +1198,11 @@ export const PrescriptionsTab: React.FC<PrescriptionsTabProps> = ({
             </div>
           ) : (
             /* Single Day Preset Row */
-            <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl">
               <div>
                 <label className="block text-[11px] font-bold text-slate-700 mb-1 flex items-center gap-1">
                   <Calendar className="w-3 h-3 text-teal-600" />
-                  <span>Ngày uống thuốc:</span>
+                  <span>Ngày thực hiện bài học:</span>
                 </label>
                 <input
                   type="date"
@@ -833,22 +1211,6 @@ export const PrescriptionsTab: React.FC<PrescriptionsTabProps> = ({
                   onChange={(e) => setStartDate(e.target.value)}
                   className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 font-semibold focus:outline-hidden focus:border-teal-400 cursor-pointer"
                 />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1 flex items-center gap-1">
-                  <Clock className="w-3 h-3 text-teal-600" />
-                  <span>Giờ uống trong ngày:</span>
-                </label>
-                <div className="flex items-center bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs">
-                  <Clock className="w-3.5 h-3.5 text-slate-400 mr-1.5 shrink-0" />
-                  <input
-                    type="time"
-                    value={scheduledTime}
-                    onChange={(e) => setScheduledTime(e.target.value)}
-                    className="bg-transparent text-slate-800 font-bold focus:outline-hidden w-full cursor-pointer"
-                  />
-                </div>
               </div>
             </div>
           )}
@@ -1162,15 +1524,50 @@ export const PrescriptionsTab: React.FC<PrescriptionsTabProps> = ({
         {/* ================= 1. GOOGLE CALENDAR WEEK VIEW ================= */}
         {calendarViewMode === 'calendar-week' && (
           <div className="space-y-3 pt-1">
+            {/* Horizontal Scroll Navigation & Drag Guidance Bar */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 bg-gradient-to-r from-teal-50/70 via-indigo-50/50 to-slate-50 border border-teal-200/70 rounded-2xl text-xs">
+              <div className="flex items-center gap-2 text-slate-700 font-semibold">
+                <MoveHorizontal className="w-4 h-4 text-teal-600 shrink-0" />
+                <span>💡 <strong>Kéo qua kéo lại để xem:</strong> Giữ chuột kéo ngang, vuốt con lăn hoặc bấm nút để xem Thứ 2 đến Chủ Nhật</span>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={scrollLeftSmooth}
+                  className="px-3 py-1 bg-white hover:bg-slate-100 border border-slate-200 rounded-xl text-slate-700 font-bold transition flex items-center gap-1 cursor-pointer shadow-2xs text-[11px]"
+                  title="Cuộn sang các ngày đầu tuần"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                  <span>Đầu tuần (T2 - T4)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={scrollRightSmooth}
+                  className="px-3 py-1 bg-white hover:bg-slate-100 border border-slate-200 rounded-xl text-slate-700 font-bold transition flex items-center gap-1 cursor-pointer shadow-2xs text-[11px]"
+                  title="Cuộn sang các ngày cuối tuần"
+                >
+                  <span>Cuối tuần (T5 - CN)</span>
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+
             {showHourlySlots ? (
               /* DETAILED HOURLY CALENDAR MATRIX (GOOGLE CALENDAR MODE) */
               <div className="border border-slate-200 rounded-3xl overflow-hidden shadow-2xs bg-white">
-                <div className="overflow-x-auto">
-                  <div className="min-w-[840px]">
+                <div
+                  ref={scrollContainerRef}
+                  onMouseDown={handleMouseDown}
+                  onMouseLeave={handleMouseLeave}
+                  onMouseUp={handleMouseUp}
+                  onMouseMove={handleMouseMove}
+                  className="overflow-x-auto select-none cursor-grab active:cursor-grabbing pb-2"
+                >
+                  <div className="min-w-[1460px]">
                     {/* Day Headers (Monday to Sunday) */}
-                    <div className="grid grid-cols-8 bg-slate-50/90 border-b border-slate-200 sticky top-0 z-10">
-                      <div className="p-3 text-center border-r border-slate-200 text-xs font-bold text-slate-400 flex items-center justify-center">
-                        <Clock className="w-4 h-4 text-slate-400 mr-1" />
+                    <div className="grid grid-cols-[100px_repeat(7,1fr)] bg-slate-50/90 border-b border-slate-200 sticky top-0 z-10">
+                      <div className="p-3 text-center border-r border-slate-200 text-xs font-bold text-slate-500 flex items-center justify-center sticky left-0 bg-slate-50/95 backdrop-blur-md z-20 shadow-xs">
+                        <Clock className="w-4 h-4 text-teal-600 mr-1" />
                         <span>Mốc giờ</span>
                       </div>
                       {weekDays.map((day) => {
@@ -1179,7 +1576,7 @@ export const PrescriptionsTab: React.FC<PrescriptionsTabProps> = ({
                           <div
                             key={day.dateStr}
                             className={`p-2.5 text-center border-r border-slate-200 last:border-r-0 transition ${
-                              day.isToday ? 'bg-teal-50/60 font-bold' : ''
+                              day.isToday ? 'bg-teal-50/80 font-bold' : ''
                             }`}
                           >
                             <span className="text-[11px] font-semibold text-slate-500 block">
@@ -1196,7 +1593,7 @@ export const PrescriptionsTab: React.FC<PrescriptionsTabProps> = ({
                                 {day.dayNum}
                               </span>
                             </div>
-                            <span className="text-[10px] text-slate-400 block mt-0.5">
+                            <span className="text-[10px] text-slate-400 block mt-0.5 font-medium">
                               {dayTasks.length > 0 ? `${dayTasks.length} phác đồ` : 'Trống'}
                             </span>
                           </div>
@@ -1205,8 +1602,8 @@ export const PrescriptionsTab: React.FC<PrescriptionsTabProps> = ({
                     </div>
 
                     {/* All-Day / Unscheduled row */}
-                    <div className="grid grid-cols-8 border-b border-slate-200 bg-slate-50/40">
-                      <div className="p-2 border-r border-slate-200 text-[11px] font-semibold text-slate-500 text-center flex items-center justify-center">
+                    <div className="grid grid-cols-[100px_repeat(7,1fr)] border-b border-slate-200 bg-slate-50/40">
+                      <div className="p-2 border-r border-slate-200 text-[11px] font-semibold text-slate-500 text-center flex items-center justify-center sticky left-0 bg-slate-50/95 backdrop-blur-md z-20 shadow-xs">
                         Cả ngày
                       </div>
                       {weekDays.map((day) => {
@@ -1218,46 +1615,49 @@ export const PrescriptionsTab: React.FC<PrescriptionsTabProps> = ({
                             key={'allday-' + day.dateStr}
                             className="p-1.5 border-r border-slate-200 last:border-r-0 min-h-[44px] space-y-1"
                           >
-                            {allDayTasks.map((task) => (
-                              <div
-                                key={task.id}
-                                className={`text-[11px] p-1.5 rounded-xl border flex items-center justify-between gap-1 shadow-2xs ${
-                                  task.done
-                                    ? 'bg-slate-100 text-slate-400 border-slate-200 line-through'
-                                    : 'bg-teal-50 text-teal-900 border-teal-200'
-                                }`}
-                              >
-                                <div className="flex items-center gap-1.5 truncate">
-                                  <button
-                                    onClick={() => onToggleTask(task.id)}
-                                    className="cursor-pointer shrink-0"
-                                  >
-                                    {task.done ? (
-                                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                                    ) : (
-                                      <Circle className="w-3.5 h-3.5 text-teal-400" />
-                                    )}
-                                  </button>
-                                  <span className="truncate font-semibold">{task.title}</span>
+                            {allDayTasks.map((task) => {
+                              const borderCls = PRIORITY_BORDER_CONFIG[task.priority]?.borderClass || 'border border-slate-200';
+                              const colorStyle = getTaskColorStyle(task.color);
+                              return (
+                                <div
+                                  key={task.id}
+                                  style={colorStyle}
+                                  className={`text-[11px] p-2 rounded-xl ${borderCls} flex items-center justify-between gap-1 shadow-2xs ${
+                                    task.done ? 'opacity-60 line-through' : ''
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-1.5 min-w-0">
+                                    <button
+                                      onClick={() => onToggleTask(task.id)}
+                                      className="cursor-pointer shrink-0"
+                                    >
+                                      {task.done ? (
+                                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                                      ) : (
+                                        <Circle className="w-3.5 h-3.5 text-teal-400" />
+                                      )}
+                                    </button>
+                                    <span className="truncate font-semibold">{task.title}</span>
+                                  </div>
+                                  <div className="flex items-center gap-0.5 shrink-0">
+                                    <button
+                                      onClick={() => handleStartEdit(task)}
+                                      title="Sửa"
+                                      className="p-1 hover:text-teal-600 transition cursor-pointer"
+                                    >
+                                      <Pencil className="w-3 h-3" />
+                                    </button>
+                                    <button
+                                      onClick={() => onDeleteTask(task.id)}
+                                      title="Xóa"
+                                      className="p-1 hover:text-rose-600 transition cursor-pointer"
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                    </button>
+                                  </div>
                                 </div>
-                                <div className="flex items-center gap-0.5 shrink-0">
-                                  <button
-                                    onClick={() => handleStartEdit(task)}
-                                    title="Sửa"
-                                    className="p-1 hover:text-teal-600 transition cursor-pointer"
-                                  >
-                                    <Pencil className="w-3 h-3" />
-                                  </button>
-                                  <button
-                                    onClick={() => onDeleteTask(task.id)}
-                                    title="Xóa"
-                                    className="p-1 hover:text-rose-600 transition cursor-pointer"
-                                  >
-                                    <Trash2 className="w-3 h-3" />
-                                  </button>
-                                </div>
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         );
                       })}
@@ -1265,130 +1665,206 @@ export const PrescriptionsTab: React.FC<PrescriptionsTabProps> = ({
 
                     {/* Hourly Rows (06:00 - 22:00) */}
                     <div className="divide-y divide-slate-100">
-                      {HOURLY_SLOTS.map((hourSlot) => (
-                        <div key={hourSlot} className="grid grid-cols-8 min-h-[56px] hover:bg-slate-50/20 transition">
-                          {/* Hour Label */}
-                          <div className="p-2 border-r border-slate-100 text-right pr-2 text-xs font-mono font-bold text-slate-400 flex items-start justify-end select-none">
-                            {hourSlot}
-                          </div>
+                      {HOURLY_SLOTS.map((hourSlot) => {
+                        const slotH = parseInt(hourSlot.slice(0, 2), 10);
+                        const slotStartMin = slotH * 60;
 
-                          {/* 7 Days Columns */}
-                          {weekDays.map((day) => {
-                            const matchedTasks = sortedTasks.filter((t) => {
-                              if (!isTaskOnDate(t, day.dateStr, day.dayOfWeek)) return false;
-                              if (!t.scheduledTime) return false;
-                              const taskHour = t.scheduledTime.slice(0, 2);
-                              return taskHour === hourSlot.slice(0, 2);
-                            });
+                        return (
+                          <div key={hourSlot} className="grid grid-cols-[100px_repeat(7,1fr)] min-h-[64px] hover:bg-slate-50/20 transition">
+                            {/* Hour Label - Sticky on left */}
+                            <div className="p-2 border-r border-slate-100 text-right pr-3 text-xs font-mono font-bold text-slate-400 flex items-start justify-end select-none sticky left-0 bg-white/95 backdrop-blur-md z-20 shadow-xs">
+                              {hourSlot}
+                            </div>
 
-                            return (
-                              <div
-                                key={day.dateStr + '-' + hourSlot}
-                                className={`p-1.5 border-r border-slate-100 last:border-r-0 flex flex-col justify-center transition ${
-                                  day.isToday ? 'bg-teal-50/20' : ''
-                                }`}
-                              >
-                                {matchedTasks.length > 0 ? (
-                                  /* Giờ KHÔNG TRỐNG: Hiển thị các phác đồ */
-                                  <div className="space-y-1.5 w-full">
-                                    {matchedTasks.map((task) => {
-                                      const isUrgent = task.priority === 'Bắt buộc uống (Khẩn cấp)';
-                                      const isImportant = task.priority === 'Quan trọng (Uống trước)';
+                            {/* 7 Days Columns */}
+                            {weekDays.map((day) => {
+                              // Tasks starting in this hour slot
+                              const startingTasks = sortedTasks.filter((t) => {
+                                if (!isTaskOnDate(t, day.dateStr, day.dayOfWeek)) return false;
+                                if (!t.scheduledTime) return false;
+                                const taskStartH = parseInt(t.scheduledTime.slice(0, 2), 10);
+                                return taskStartH === slotH;
+                              });
 
-                                      return (
-                                        <div
-                                          key={task.id}
-                                          className={`p-2 rounded-2xl border text-xs transition shadow-2xs ${
-                                            task.done
-                                              ? 'bg-slate-50 text-slate-400 border-slate-200 opacity-60'
-                                              : isUrgent
-                                              ? 'bg-gradient-to-r from-rose-50 to-white border-rose-300 text-rose-950 ring-1 ring-rose-200'
-                                              : isImportant
-                                              ? 'bg-gradient-to-r from-amber-50 to-white border-amber-300 text-amber-950'
-                                              : task.isLongTerm
-                                              ? 'bg-gradient-to-r from-indigo-50/80 to-white border-indigo-200 text-indigo-950'
-                                              : 'bg-gradient-to-r from-teal-50/90 to-white border-teal-200 text-teal-950'
-                                          }`}
-                                        >
-                                          {/* Title & Checkbox */}
-                                          <div className="flex items-start justify-between gap-1">
-                                            <div className="flex items-start gap-1.5 min-w-0">
-                                              <button
-                                                onClick={() => onToggleTask(task.id)}
-                                                className="cursor-pointer shrink-0 mt-0.5"
-                                              >
-                                                {task.done ? (
-                                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                                                ) : (
-                                                  <Circle className={`w-3.5 h-3.5 ${
-                                                    isUrgent ? 'text-rose-500' : task.isLongTerm ? 'text-indigo-500' : 'text-teal-500'
-                                                  }`} />
-                                                )}
-                                              </button>
-                                              <div className="min-w-0">
-                                                <p
-                                                  className={`font-bold text-[11px] leading-tight line-clamp-2 ${
-                                                    task.done ? 'line-through text-slate-400' : 'text-slate-800'
-                                                  }`}
-                                                  title={task.title}
+                              // Tasks continuing from previous hours
+                              const continuingTasks = sortedTasks.filter((t) => {
+                                if (!isTaskOnDate(t, day.dateStr, day.dayOfWeek)) return false;
+                                if (!t.scheduledTime) return false;
+                                const startH = parseInt(t.scheduledTime.slice(0, 2), 10);
+                                if (startH >= slotH) return false;
+                                const startM = parseInt(t.scheduledTime.slice(3, 5), 10) || 0;
+                                const endH = t.endTime ? parseInt(t.endTime.slice(0, 2), 10) : startH;
+                                const endM = t.endTime ? parseInt(t.endTime.slice(3, 5), 10) : startM + (t.durationMinutes || 30);
+                                let endTotalMin = endH * 60 + endM;
+                                if (endTotalMin <= startH * 60 + startM) endTotalMin += 1440;
+                                return endTotalMin > slotStartMin;
+                              });
+
+                              const hasAnyTask = startingTasks.length > 0 || continuingTasks.length > 0;
+
+                              return (
+                                <div
+                                  key={day.dateStr + '-' + hourSlot}
+                                  className={`p-2 border-r border-slate-100 last:border-r-0 flex flex-col justify-center transition min-w-0 ${
+                                    day.isToday ? 'bg-teal-50/20' : ''
+                                  }`}
+                                >
+                                  {hasAnyTask ? (
+                                    /* GIỜ CÓ ĐẦU VIỆC */
+                                    <div className="space-y-1.5 w-full">
+                                      {/* Primary Starting Tasks */}
+                                      {startingTasks.map((task) => {
+                                        const borderCfg = PRIORITY_BORDER_CONFIG[task.priority] || PRIORITY_BORDER_CONFIG['Bình thường'];
+                                        const colorStyle = getTaskColorStyle(task.color);
+                                        const taskEnd = task.endTime || calculateEndTime(task.scheduledTime || '14:00', task.durationMinutes || 30);
+                                        const durText = formatDurationText(task.durationMinutes || (task.endTime ? calculateDurationFromTimes(task.scheduledTime || '14:00', task.endTime) : 30));
+
+                                        return (
+                                          <div
+                                            key={task.id}
+                                            style={colorStyle}
+                                            className={`p-2.5 rounded-2xl ${borderCfg.borderClass} text-xs transition shadow-2xs ${
+                                              task.done ? 'opacity-60' : ''
+                                            }`}
+                                          >
+                                            {/* Header: Priority Dot, Time Range & Actions */}
+                                            <div className="flex items-start justify-between gap-1 pb-1 border-b border-black/5 mb-1.5">
+                                              <div className="flex items-center gap-1.5 min-w-0">
+                                                <button
+                                                  onClick={() => onToggleTask(task.id)}
+                                                  className="cursor-pointer shrink-0 mt-0.5"
+                                                  title={task.done ? 'Đánh dấu chưa hoàn thành' : 'Đánh dấu đã hoàn thành'}
                                                 >
-                                                  {task.title}
-                                                </p>
-                                                <div className="flex items-center gap-1 mt-0.5 text-[10px]">
-                                                  <span className="font-mono font-bold text-teal-700 bg-teal-100/60 px-1 py-0.2 rounded-md">
-                                                    {task.scheduledTime}
-                                                  </span>
-                                                  <span className="text-slate-400 truncate">
-                                                    {task.dosage.split(' ')[1] || task.dosage}
-                                                  </span>
-                                                </div>
+                                                  {task.done ? (
+                                                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                                                  ) : (
+                                                    <Circle className="w-4 h-4 text-slate-400 hover:text-teal-500" />
+                                                  )}
+                                                </button>
+                                                <span 
+                                                  className="w-2.5 h-2.5 rounded-full shrink-0" 
+                                                  style={{ backgroundColor: borderCfg.dotColor }}
+                                                  title={`Màu khung viền: ${borderCfg.shortLabel}`}
+                                                />
+                                                <span className="font-mono font-bold text-[10px] px-1.5 py-0.5 rounded-md bg-black/5 text-slate-800">
+                                                  ⏰ {task.scheduledTime} - {taskEnd}
+                                                </span>
+                                              </div>
+
+                                              <div className="flex items-center gap-0.5 shrink-0">
+                                                <button
+                                                  onClick={() => handleStartEdit(task)}
+                                                  title="Chỉnh sửa phác đồ này"
+                                                  className="p-1 hover:text-teal-700 text-slate-400 hover:bg-black/5 rounded-lg transition cursor-pointer"
+                                                >
+                                                  <Pencil className="w-3.5 h-3.5" />
+                                                </button>
+                                                <button
+                                                  onClick={() => onDeleteTask(task.id)}
+                                                  title="Xóa liều thuốc này"
+                                                  className="p-1 hover:text-rose-600 text-slate-300 hover:bg-black/5 rounded-lg transition cursor-pointer"
+                                                >
+                                                  <Trash2 className="w-3.5 h-3.5" />
+                                                </button>
                                               </div>
                                             </div>
 
-                                            {/* Action Buttons: Chỉnh sửa & Xóa */}
-                                            <div className="flex items-center gap-0.5 shrink-0">
+                                            {/* Title - Fully readable, breaks words */}
+                                            <p
+                                              className={`font-bold text-xs leading-snug break-words ${
+                                                task.done ? 'line-through text-slate-400' : 'text-slate-900'
+                                              }`}
+                                              title={task.title}
+                                            >
+                                              {task.title}
+                                            </p>
+
+                                            {/* Footer: Duration, Dosage & Category */}
+                                            <div className="flex flex-wrap items-center gap-1 mt-1.5 text-[10px]">
+                                              {durText && (
+                                                <span className="px-1.5 py-0.2 rounded-md bg-black/5 font-semibold text-slate-700">
+                                                  ⏳ {durText}
+                                                </span>
+                                              )}
+                                              <span className="px-1.5 py-0.2 rounded-md bg-black/5 font-medium text-slate-600">
+                                                {task.category}
+                                              </span>
+                                            </div>
+
+                                            {/* Notes / Document Link if available */}
+                                            {task.documentUrl && (
+                                              <div className="mt-1 pt-1 border-t border-black/5">
+                                                <a
+                                                  href={task.documentUrl}
+                                                  target="_blank"
+                                                  rel="noopener noreferrer"
+                                                  className="inline-flex items-center gap-1 text-[10px] font-bold text-teal-700 hover:underline"
+                                                >
+                                                  <FileText className="w-3 h-3" />
+                                                  <span className="truncate">{task.documentName || 'Tài liệu'}</span>
+                                                  <ExternalLink className="w-2.5 h-2.5" />
+                                                </a>
+                                              </div>
+                                            )}
+                                          </div>
+                                        );
+                                      })}
+
+                                      {/* Continuing Tasks from earlier hour */}
+                                      {continuingTasks.map((cTask) => {
+                                        const cBorder = PRIORITY_BORDER_CONFIG[cTask.priority] || PRIORITY_BORDER_CONFIG['Bình thường'];
+                                        const colorStyle = getTaskColorStyle(cTask.color);
+                                        const cEnd = cTask.endTime || calculateEndTime(cTask.scheduledTime || '14:00', cTask.durationMinutes || 30);
+                                        const cDur = formatDurationText(cTask.durationMinutes);
+
+                                        return (
+                                          <div
+                                            key={`cont-${cTask.id}`}
+                                            style={colorStyle}
+                                            className={`p-2 rounded-2xl ${cBorder.borderClass} border-dashed text-xs transition shadow-2xs opacity-90`}
+                                          >
+                                            <div className="flex items-center justify-between gap-1">
+                                              <div className="flex items-center gap-1.5 min-w-0">
+                                                <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: cBorder.dotColor }} />
+                                                <span className="text-[10px] font-bold text-slate-700 truncate">
+                                                  ↳ ⏳ Đang làm ({cTask.scheduledTime} - {cEnd}): <strong className="font-bold">{cTask.title}</strong>
+                                                </span>
+                                              </div>
                                               <button
-                                                onClick={() => handleStartEdit(task)}
-                                                title="Chỉnh sửa lịch phác đồ này"
-                                                className="p-1 hover:text-teal-600 text-slate-400 hover:bg-white rounded-lg transition cursor-pointer"
+                                                onClick={() => handleStartEdit(cTask)}
+                                                title="Sửa phác đồ"
+                                                className="p-1 hover:text-teal-700 text-slate-400 hover:bg-black/5 rounded-lg transition cursor-pointer shrink-0"
                                               >
                                                 <Pencil className="w-3 h-3" />
                                               </button>
-                                              <button
-                                                onClick={() => onDeleteTask(task.id)}
-                                                title="Xóa liều thuốc này"
-                                                className="p-1 hover:text-rose-600 text-slate-300 hover:bg-white rounded-lg transition cursor-pointer"
-                                              >
-                                                <Trash2 className="w-3 h-3" />
-                                              </button>
                                             </div>
                                           </div>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                ) : (
-                                  /* GIỜ TRỐNG: Chọn vào giờ trống để chuyển sang lên lịch lấp vào giờ đó */
-                                  <button
-                                    type="button"
-                                    onClick={() => handleSelectEmptySlot(day.dateStr, hourSlot)}
-                                    className="w-full h-11 rounded-xl border border-dashed border-slate-200/90 hover:border-teal-400 hover:bg-teal-50/50 flex items-center justify-center transition cursor-pointer group text-slate-300 hover:text-teal-700 p-1"
-                                    title={`Giờ trống ${hourSlot} (${day.dayName} ${formatDateVN(day.dateStr)}) - Nhấn để chuyển sang lên lịch lấp vào giờ này`}
-                                  >
-                                    <span className="text-[11px] font-bold opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 text-teal-600">
-                                      <Plus className="w-3 h-3" />
-                                      <span>Lên lịch {hourSlot}</span>
-                                    </span>
-                                    <span className="text-[10px] text-slate-300 group-hover:hidden select-none">
-                                      + Trống
-                                    </span>
-                                  </button>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ))}
+                                        );
+                                      })}
+                                    </div>
+                                  ) : (
+                                    /* GIỜ TRỐNG: Chọn vào giờ trống để chuyển sang lên lịch lấp vào giờ đó */
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSelectEmptySlot(day.dateStr, hourSlot)}
+                                      className="w-full h-12 rounded-xl border border-dashed border-slate-200/90 hover:border-teal-400 hover:bg-teal-50/50 flex items-center justify-center transition cursor-pointer group text-slate-300 hover:text-teal-700 p-1"
+                                      title={`Giờ trống ${hourSlot} (${day.dayName} ${formatDateVN(day.dateStr)}) - Nhấn để chuyển sang lên lịch lấp vào giờ này`}
+                                    >
+                                      <span className="text-[11px] font-bold opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 text-teal-600">
+                                        <Plus className="w-3 h-3" />
+                                        <span>Lên lịch {hourSlot}</span>
+                                      </span>
+                                      <span className="text-[10px] text-slate-300 group-hover:hidden select-none">
+                                        + Trống
+                                      </span>
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 </div>
@@ -1430,58 +1906,63 @@ export const PrescriptionsTab: React.FC<PrescriptionsTabProps> = ({
                               Chưa có phác đồ
                             </p>
                           ) : (
-                            dayTasks.map((task) => (
-                              <div
-                                key={task.id}
-                                className={`p-2 rounded-2xl border text-xs space-y-1 transition ${
-                                  task.done
-                                    ? 'bg-slate-50 text-slate-400 border-slate-200 line-through'
-                                    : task.priority === 'Bắt buộc uống (Khẩn cấp)'
-                                    ? 'bg-rose-50 border-rose-200 text-rose-950 font-medium'
-                                    : 'bg-white border-teal-100 text-slate-800'
-                                }`}
-                              >
-                                <div className="flex items-start justify-between gap-1">
-                                  <div className="flex items-center gap-1.5 min-w-0">
-                                    <button
-                                      onClick={() => onToggleTask(task.id)}
-                                      className="cursor-pointer shrink-0"
-                                    >
-                                      {task.done ? (
-                                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                                      ) : (
-                                        <Circle className="w-3.5 h-3.5 text-teal-400" />
-                                      )}
-                                    </button>
-                                    <p className="font-bold text-[11px] truncate" title={task.title}>
-                                      {task.title}
-                                    </p>
+                            dayTasks.map((task) => {
+                              const borderCfg = PRIORITY_BORDER_CONFIG[task.priority] || PRIORITY_BORDER_CONFIG['Bình thường'];
+                              const colorStyle = getTaskColorStyle(task.color);
+                              const taskEnd = task.endTime || calculateEndTime(task.scheduledTime || '14:00', task.durationMinutes || 30);
+                              const durText = formatDurationText(task.durationMinutes || (task.endTime ? calculateDurationFromTimes(task.scheduledTime || '14:00', task.endTime) : 30));
+
+                              return (
+                                <div
+                                  key={task.id}
+                                  style={colorStyle}
+                                  className={`p-2.5 rounded-2xl ${borderCfg.borderClass} text-xs space-y-1 transition ${
+                                    task.done ? 'opacity-60 line-through' : ''
+                                  }`}
+                                >
+                                  <div className="flex items-start justify-between gap-1">
+                                    <div className="flex items-center gap-1.5 min-w-0">
+                                      <button
+                                        onClick={() => onToggleTask(task.id)}
+                                        className="cursor-pointer shrink-0"
+                                      >
+                                        {task.done ? (
+                                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                        ) : (
+                                          <Circle className="w-3.5 h-3.5 text-slate-400" />
+                                        )}
+                                      </button>
+                                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: borderCfg.dotColor }} />
+                                      <p className="font-bold text-[11px] truncate" title={task.title}>
+                                        {task.title}
+                                      </p>
+                                    </div>
+                                    <div className="flex items-center gap-0.5 shrink-0">
+                                      <button
+                                        onClick={() => handleStartEdit(task)}
+                                        title="Sửa"
+                                        className="p-1 hover:text-teal-600 text-slate-400 cursor-pointer"
+                                      >
+                                        <Pencil className="w-3 h-3" />
+                                      </button>
+                                      <button
+                                        onClick={() => onDeleteTask(task.id)}
+                                        title="Xóa"
+                                        className="p-1 hover:text-rose-600 text-slate-300 cursor-pointer"
+                                      >
+                                        <Trash2 className="w-3 h-3" />
+                                      </button>
+                                    </div>
                                   </div>
-                                  <div className="flex items-center gap-0.5 shrink-0">
-                                    <button
-                                      onClick={() => handleStartEdit(task)}
-                                      title="Sửa"
-                                      className="p-1 hover:text-teal-600 text-slate-400 cursor-pointer"
-                                    >
-                                      <Pencil className="w-3 h-3" />
-                                    </button>
-                                    <button
-                                      onClick={() => onDeleteTask(task.id)}
-                                      title="Xóa"
-                                      className="p-1 hover:text-rose-600 text-slate-300 cursor-pointer"
-                                    >
-                                      <Trash2 className="w-3 h-3" />
-                                    </button>
-                                  </div>
+                                  {task.scheduledTime && (
+                                    <div className="flex items-center gap-1 text-[10px] text-slate-700 font-bold font-mono">
+                                      <Clock className="w-3 h-3 text-teal-600" />
+                                      <span>{task.scheduledTime} - {taskEnd} {durText ? `(${durText})` : ''}</span>
+                                    </div>
+                                  )}
                                 </div>
-                                {task.scheduledTime && (
-                                  <div className="flex items-center gap-1 text-[10px] text-teal-700 font-bold">
-                                    <Clock className="w-3 h-3" />
-                                    <span>{task.scheduledTime}</span>
-                                  </div>
-                                )}
-                              </div>
-                            ))
+                              );
+                            })
                           )}
                         </div>
                       </div>
@@ -1584,23 +2065,18 @@ export const PrescriptionsTab: React.FC<PrescriptionsTabProps> = ({
               </div>
             ) : (
               sortedTasks.map((task) => {
-                const isUrgent = task.priority === 'Bắt buộc uống (Khẩn cấp)';
-                const isImportant = task.priority === 'Quan trọng (Uống trước)';
+                const borderCfg = PRIORITY_BORDER_CONFIG[task.priority] || PRIORITY_BORDER_CONFIG['Bình thường'];
+                const colorStyle = getTaskColorStyle(task.color);
+                const taskEnd = task.endTime || calculateEndTime(task.scheduledTime || '14:00', task.durationMinutes || 30);
+                const durText = formatDurationText(task.durationMinutes || (task.endTime ? calculateDurationFromTimes(task.scheduledTime || '14:00', task.endTime) : 30));
                 const remainingDays = getDaysRemaining(task.endDate);
 
                 return (
                   <div
                     key={task.id}
-                    className={`p-4 rounded-3xl border transition flex flex-col sm:flex-row sm:items-start justify-between gap-3 ${
-                      task.done
-                        ? 'bg-slate-50/70 border-slate-200 opacity-60'
-                        : isUrgent
-                        ? 'bg-gradient-to-r from-rose-50/40 via-white to-white border-rose-200 shadow-xs ring-1 ring-rose-200/50'
-                        : isImportant
-                        ? 'bg-gradient-to-r from-amber-50/40 via-white to-white border-amber-200 shadow-xs'
-                        : task.isLongTerm
-                        ? 'bg-gradient-to-r from-indigo-50/30 via-white to-white border-indigo-100 shadow-xs hover:border-indigo-200'
-                        : 'bg-white border-teal-100 shadow-xs hover:border-teal-200'
+                    style={colorStyle}
+                    className={`p-4 rounded-3xl ${borderCfg.borderClass} transition flex flex-col sm:flex-row sm:items-start justify-between gap-3 shadow-xs ${
+                      task.done ? 'opacity-60' : ''
                     }`}
                   >
                     <div className="flex items-start space-x-3.5 flex-1">
@@ -1609,9 +2085,9 @@ export const PrescriptionsTab: React.FC<PrescriptionsTabProps> = ({
                         className="cursor-pointer focus:outline-hidden mt-0.5"
                       >
                         {task.done ? (
-                          <CheckCircle2 className="w-6 h-6 text-emerald-500 hover:scale-110 transition" />
+                          <CheckCircle2 className="w-6 h-6 text-emerald-600 hover:scale-110 transition" />
                         ) : (
-                          <Circle className={`w-6 h-6 ${isUrgent ? 'text-rose-400' : task.isLongTerm ? 'text-indigo-400' : 'text-teal-400'} hover:scale-110 transition`} />
+                          <Circle className="w-6 h-6 text-slate-400 hover:text-teal-500 hover:scale-110 transition" />
                         )}
                       </button>
 
@@ -1620,11 +2096,20 @@ export const PrescriptionsTab: React.FC<PrescriptionsTabProps> = ({
                         <div className="flex flex-wrap items-center gap-2">
                           <p
                             className={`text-sm font-bold ${
-                              task.done ? 'line-through text-slate-400' : 'text-slate-800'
+                              task.done ? 'line-through text-slate-400' : 'text-slate-900'
                             }`}
                           >
                             {task.title}
                           </p>
+
+                          {/* Border Priority Indicator */}
+                          <span 
+                            className="text-[10px] font-extrabold px-2 py-0.5 rounded-full border flex items-center gap-1 bg-white/80"
+                            style={{ borderColor: borderCfg.borderColor, color: borderCfg.borderColor }}
+                          >
+                            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: borderCfg.dotColor }} />
+                            <span>{borderCfg.shortLabel}</span>
+                          </span>
 
                           {/* Long-term Badge */}
                           {task.isLongTerm && (
@@ -1633,26 +2118,12 @@ export const PrescriptionsTab: React.FC<PrescriptionsTabProps> = ({
                               Đơn dài hạn
                             </span>
                           )}
-
-                          {/* Priority Badge */}
-                          {isUrgent && (
-                            <span className="text-[10px] bg-rose-100 text-rose-700 font-extrabold px-2 py-0.5 rounded-full border border-rose-200 flex items-center gap-1">
-                              <Flame className="w-3 h-3 text-rose-600" />
-                              Bắt buộc uống
-                            </span>
-                          )}
-                          {isImportant && (
-                            <span className="text-[10px] bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded-full border border-amber-200 flex items-center gap-1">
-                              <Star className="w-3 h-3 text-amber-600 fill-amber-400" />
-                              Quan trọng (Uống trước)
-                            </span>
-                          )}
                         </div>
 
                         {/* Date & Time Row */}
                         <div className="flex flex-wrap items-center gap-2">
                           {task.isLongTerm ? (
-                            <span className="text-[11px] bg-indigo-50/90 text-indigo-800 border border-indigo-200/90 px-2.5 py-1 rounded-xl font-semibold flex items-center gap-1.5 shadow-2xs">
+                            <span className="text-[11px] bg-white/80 text-indigo-900 border border-indigo-200 px-2.5 py-1 rounded-xl font-semibold flex items-center gap-1.5 shadow-2xs">
                               <CalendarDays className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
                               <span>
                                 {task.startDate ? formatDateVN(task.startDate) : 'Hôm nay'} 
@@ -1665,26 +2136,26 @@ export const PrescriptionsTab: React.FC<PrescriptionsTabProps> = ({
                               )}
                             </span>
                           ) : task.startDate ? (
-                            <span className="text-[11px] bg-slate-100 text-slate-700 border border-slate-200 px-2.5 py-1 rounded-xl font-semibold flex items-center gap-1.5">
+                            <span className="text-[11px] bg-white/80 text-slate-700 border border-slate-200 px-2.5 py-1 rounded-xl font-semibold flex items-center gap-1.5">
                               <Calendar className="w-3.5 h-3.5 text-slate-500 shrink-0" />
                               <span>Ngày: {formatDateVN(task.startDate)}</span>
                             </span>
                           ) : null}
 
                           {task.scheduledTime && (
-                            <span className="text-[11px] bg-teal-50 text-teal-800 border border-teal-200 px-2.5 py-1 rounded-xl font-semibold flex items-center gap-1">
-                              <Clock className="w-3 h-3 text-teal-600" />
-                              Giờ uống: {task.scheduledTime}
+                            <span className="text-[11px] bg-white/80 text-slate-800 border border-slate-200 px-2.5 py-1 rounded-xl font-bold flex items-center gap-1 font-mono">
+                              <Clock className="w-3.5 h-3.5 text-teal-600" />
+                              <span>{task.scheduledTime} - {taskEnd} {durText ? `(${durText})` : ''}</span>
                             </span>
                           )}
 
                           {remainingDays !== null && (
-                            <span className={`text-[11px] px-2.5 py-1 rounded-xl font-bold flex items-center gap-1 ${
+                            <span className={`text-[11px] px-2.5 py-1 rounded-xl font-bold flex items-center gap-1 bg-white/80 ${
                               remainingDays > 5
-                                ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                                ? 'text-emerald-800 border border-emerald-200'
                                 : remainingDays >= 0
-                                ? 'bg-amber-50 text-amber-800 border border-amber-200'
-                                : 'bg-rose-50 text-rose-800 border border-rose-200'
+                                ? 'text-amber-800 border border-amber-200'
+                                : 'text-rose-800 border border-rose-200'
                             }`}>
                               <Hourglass className="w-3 h-3" />
                               {remainingDays > 0 
@@ -1698,17 +2169,17 @@ export const PrescriptionsTab: React.FC<PrescriptionsTabProps> = ({
 
                         {/* Dosage, Category */}
                         <div className="flex flex-wrap items-center gap-2 text-xs pt-0.5">
-                          <span className="text-[11px] text-teal-700 bg-teal-50/70 border border-teal-100 px-2 py-0.5 rounded-md font-medium">
+                          <span className="text-[11px] text-teal-800 bg-white/80 border border-teal-200 px-2 py-0.5 rounded-md font-semibold">
                             {task.category}
                           </span>
-                          <span className="text-[11px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md font-medium">
+                          <span className="text-[11px] text-slate-600 bg-white/80 px-2 py-0.5 rounded-md font-medium border border-slate-200">
                             {task.dosage}
                           </span>
                         </div>
 
                         {/* Doctor Notes */}
                         {task.notes && (
-                          <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/80 text-xs text-slate-700 flex items-start gap-1.5 mt-1">
+                          <div className="bg-white/80 p-2.5 rounded-xl border border-slate-200/80 text-xs text-slate-700 flex items-start gap-1.5 mt-1">
                             <StickyNote className="w-3.5 h-3.5 text-teal-600 shrink-0 mt-0.5" />
                             <span className="italic leading-relaxed">{task.notes}</span>
                           </div>
@@ -1721,7 +2192,7 @@ export const PrescriptionsTab: React.FC<PrescriptionsTabProps> = ({
                               href={task.documentUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1.5 text-xs font-bold text-teal-700 hover:text-teal-900 bg-teal-50 hover:bg-teal-100 px-3 py-1.5 rounded-xl border border-teal-200 transition"
+                              className="inline-flex items-center gap-1.5 text-xs font-bold text-teal-800 hover:text-teal-950 bg-white/90 hover:bg-white px-3 py-1.5 rounded-xl border border-teal-300 transition shadow-2xs"
                             >
                               <FileText className="w-3.5 h-3.5 text-teal-600" />
                               <span>Tài liệu: {task.documentName || 'Mở tài liệu đính kèm'}</span>
@@ -1737,14 +2208,14 @@ export const PrescriptionsTab: React.FC<PrescriptionsTabProps> = ({
                       <button
                         onClick={() => handleStartEdit(task)}
                         title="Chỉnh sửa phác đồ này"
-                        className="text-slate-400 hover:text-teal-600 transition p-2 rounded-xl hover:bg-teal-50 cursor-pointer"
+                        className="text-slate-400 hover:text-teal-600 transition p-2 rounded-xl hover:bg-white/80 cursor-pointer"
                       >
                         <Pencil className="w-4 h-4" />
                       </button>
                       <button
                         onClick={() => onDeleteTask(task.id)}
                         title="Xóa liều thuốc này"
-                        className="text-slate-300 hover:text-rose-500 transition p-2 rounded-xl hover:bg-rose-50 cursor-pointer"
+                        className="text-slate-300 hover:text-rose-500 transition p-2 rounded-xl hover:bg-white/80 cursor-pointer"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -1768,7 +2239,7 @@ export const PrescriptionsTab: React.FC<PrescriptionsTabProps> = ({
                 </div>
                 <div>
                   <h3 className="font-bold text-slate-800 text-lg">Chỉnh Sửa Phác Đồ Điều Trị</h3>
-                  <p className="text-xs text-slate-400">Điều chỉnh thông tin phác đồ đã lên lịch khi nhập sai</p>
+                  <p className="text-xs text-slate-400">Điều chỉnh thông tin phác đồ đã lên lịch, thời gian kết thúc & màu sắc</p>
                 </div>
               </div>
               <button
@@ -1795,14 +2266,14 @@ export const PrescriptionsTab: React.FC<PrescriptionsTabProps> = ({
                 />
               </div>
 
-              {/* Category, Dosage, Priority */}
+              {/* Category, Dosage, Priority Border */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">Chuyên khoa</label>
                   <select
                     value={editForm.category}
                     onChange={(e) => setEditForm({ ...editForm, category: e.target.value as TaskCategory })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 font-semibold focus:outline-hidden focus:border-teal-400"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 font-semibold focus:outline-hidden focus:border-teal-400 cursor-pointer"
                   >
                     <option value="Hán tự (Hanzi)">Hán tự (Hanzi)</option>
                     <option value="Ngữ pháp">Ngữ pháp</option>
@@ -1814,11 +2285,11 @@ export const PrescriptionsTab: React.FC<PrescriptionsTabProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Liều lượng thời gian</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Liều lượng học</label>
                   <select
                     value={editForm.dosage}
                     onChange={(e) => setEditForm({ ...editForm, dosage: e.target.value as DosageType })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 font-semibold focus:outline-hidden focus:border-teal-400"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 font-semibold focus:outline-hidden focus:border-teal-400 cursor-pointer"
                   >
                     <option value="Liều nhẹ (5 - 10 phút)">Liều nhẹ (5 - 10p)</option>
                     <option value="Liều vừa (20 - 30 phút)">Liều vừa (20 - 30p)</option>
@@ -1828,47 +2299,154 @@ export const PrescriptionsTab: React.FC<PrescriptionsTabProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Mức độ ưu tiên</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Màu khung viền của đầu việc:
+                  </label>
                   <select
                     value={editForm.priority}
                     onChange={(e) => setEditForm({ ...editForm, priority: e.target.value as PriorityLevel })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 font-semibold focus:outline-hidden focus:border-teal-400"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 font-bold focus:outline-hidden focus:border-teal-400 cursor-pointer"
                   >
-                    <option value="Bắt buộc uống (Khẩn cấp)">🔴 Bắt buộc uống</option>
-                    <option value="Quan trọng (Uống trước)">🟡 Quan trọng</option>
-                    <option value="Bình thường">🟢 Bình thường</option>
-                    <option value="Tùy chọn / Thư giãn">⚪ Tùy chọn</option>
+                    <option value="Bắt buộc uống (Khẩn cấp)">🔴 Viền Đỏ: Bắt buộc uống</option>
+                    <option value="Quan trọng (Uống trước)">🟡 Viền Vàng: Quan trọng</option>
+                    <option value="Bình thường">🟢 Viền Xanh lá: Bình thường</option>
+                    <option value="Tùy chọn / Thư giãn">⚪ Viền Xám: Tùy chọn</option>
                   </select>
                 </div>
               </div>
 
-              {/* Date and Scheduled Time */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 bg-slate-50 rounded-2xl border border-slate-200">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
-                    <Calendar className="w-3.5 h-3.5 text-teal-600" />
-                    <span>Ngày uống thuốc / Bắt đầu:</span>
-                  </label>
-                  <input
-                    type="date"
-                    value={editForm.startDate}
-                    onChange={(e) => setEditForm({ ...editForm, startDate: e.target.value })}
-                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-hidden focus:border-teal-400"
-                  />
+              {/* Edit Modal: Màu sắc đầu việc theo sở thích */}
+              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 space-y-1.5">
+                <label className="block text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                  <Palette className="w-3.5 h-3.5 text-teal-600" />
+                  <span>Màu sắc đầu việc (Chọn theo sở thích):</span>
+                </label>
+                <div className="flex flex-wrap items-center gap-2">
+                  {TASK_COLOR_PALETTES.map((c) => {
+                    const isSelected = editForm.color === c.id;
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => setEditForm({ ...editForm, color: c.id })}
+                        style={{ backgroundColor: c.bgHex, color: c.textHex, borderColor: isSelected ? c.textHex : c.borderHex }}
+                        className={`px-2.5 py-1 rounded-xl text-xs font-bold border transition flex items-center gap-1 cursor-pointer ${
+                          isSelected ? 'ring-2 ring-teal-400 font-extrabold shadow-xs' : 'opacity-80 hover:opacity-100'
+                        }`}
+                      >
+                        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: c.textHex }} />
+                        <span>{c.name}</span>
+                        {isSelected && <Check className="w-3 h-3 shrink-0" />}
+                      </button>
+                    );
+                  })}
+                  <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl px-2 py-1 text-xs">
+                    <input
+                      type="color"
+                      value={editForm.color.startsWith('#') ? editForm.color : '#f0fdfa'}
+                      onChange={(e) => setEditForm({ ...editForm, color: e.target.value })}
+                      className="w-5 h-5 rounded-md cursor-pointer border-0 p-0"
+                    />
+                    <span className="text-[10px] text-slate-500 font-semibold">Tự chọn</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Edit Modal: Time & Custom Minute Duration & End Time */}
+              <div className="p-3.5 bg-teal-50/50 rounded-2xl border border-teal-200 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-teal-950 flex items-center gap-1">
+                    <Timer className="w-3.5 h-3.5 text-teal-600" />
+                    <span>Hẹn giờ bắt đầu & Giờ kết thúc dự kiến (Tự do sửa từng phút):</span>
+                  </span>
+                  <span className="text-[11px] font-bold text-teal-800 bg-white px-2 py-0.5 rounded-md border border-teal-200 font-mono">
+                    {editForm.scheduledTime} ➔ {editForm.endTime} ({formatDurationText(editForm.durationMinutes)})
+                  </span>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
-                    <Clock className="w-3.5 h-3.5 text-teal-600" />
-                    <span>Giờ uống trong ngày:</span>
-                  </label>
-                  <input
-                    type="time"
-                    value={editForm.scheduledTime}
-                    onChange={(e) => setEditForm({ ...editForm, scheduledTime: e.target.value })}
-                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-hidden focus:border-teal-400"
-                  />
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      Giờ bắt đầu:
+                    </label>
+                    <input
+                      type="time"
+                      value={editForm.scheduledTime}
+                      onChange={(e) => handleEditStartTimeChange(e.target.value)}
+                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold font-mono text-slate-800 focus:outline-hidden focus:border-teal-400"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      Thời lượng (Sửa từng phút):
+                    </label>
+                    <div className="flex items-center bg-white border border-slate-200 rounded-xl px-2 py-1 text-xs gap-1.5">
+                      <input
+                        type="number"
+                        min="1"
+                        max="1440"
+                        value={editForm.durationMinutes}
+                        onChange={(e) => handleEditDurationMinutesChange(parseInt(e.target.value) || 1)}
+                        className="w-14 bg-slate-50 border border-slate-200 rounded-md px-1.5 py-0.5 text-center font-bold font-mono text-slate-900"
+                      />
+                      <span className="text-slate-500 font-semibold text-[11px]">phút</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      Giờ kết thúc dự kiến:
+                    </label>
+                    <input
+                      type="time"
+                      value={editForm.endTime}
+                      onChange={(e) => handleEditEndTimeChange(e.target.value)}
+                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold font-mono text-rose-700 focus:outline-hidden focus:border-teal-400"
+                    />
+                  </div>
                 </div>
+
+                {/* Preset Chips in Edit Modal */}
+                <div className="flex flex-wrap items-center gap-1 pt-1 border-t border-teal-100">
+                  <span className="text-[10px] font-bold text-teal-900 mr-1">Nhanh:</span>
+                  {[
+                    { label: '17p', minutes: 17 },
+                    { label: '30p', minutes: 30 },
+                    { label: '36p', minutes: 36 },
+                    { label: '45p', minutes: 45 },
+                    { label: '1 giờ', minutes: 60 },
+                    { label: '1.5 giờ', minutes: 90 },
+                    { label: '2 giờ', minutes: 120 },
+                  ].map((p) => (
+                    <button
+                      key={p.minutes}
+                      type="button"
+                      onClick={() => handleEditDurationMinutesChange(p.minutes)}
+                      className={`text-[10px] px-2 py-0.5 rounded-md font-bold transition cursor-pointer border ${
+                        editForm.durationMinutes === p.minutes
+                          ? 'bg-teal-600 text-white border-teal-600'
+                          : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
+                      }`}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Date */}
+              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200">
+                <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
+                  <Calendar className="w-3.5 h-3.5 text-teal-600" />
+                  <span>Ngày thực hiện bài học / Bắt đầu:</span>
+                </label>
+                <input
+                  type="date"
+                  value={editForm.startDate}
+                  onChange={(e) => setEditForm({ ...editForm, startDate: e.target.value })}
+                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-hidden focus:border-teal-400"
+                />
               </div>
 
               {/* Long Term Options */}

@@ -33,6 +33,9 @@ export interface Task {
   category: TaskCategory;
   priority: PriorityLevel;
   scheduledTime?: string; // e.g. "08:30", "14:00", "20:00"
+  endTime?: string; // e.g. "16:00", "14:36" (Hẹn giờ kết thúc dự kiến)
+  durationMinutes?: number; // e.g. 17, 36, 120 (Thời lượng thực hiện tùy chỉnh từng phút)
+  color?: string; // Tùy chọn màu sắc đầu việc theo sở thích (Hex hoặc theme color)
   startDate?: string; // e.g. "2026-10-10"
   endDate?: string; // e.g. "2026-11-10"
   isLongTerm?: boolean; // Đơn thuốc dài hạn

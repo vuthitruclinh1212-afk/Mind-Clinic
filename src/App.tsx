@@ -795,6 +795,9 @@ export default function App() {
       createdAt: 'Hôm nay',
     };
     if (taskPayload.scheduledTime) newTask.scheduledTime = taskPayload.scheduledTime;
+    if (taskPayload.endTime) newTask.endTime = taskPayload.endTime;
+    if (taskPayload.durationMinutes !== undefined) newTask.durationMinutes = taskPayload.durationMinutes;
+    if (taskPayload.color) newTask.color = taskPayload.color;
     if (taskPayload.startDate) newTask.startDate = taskPayload.startDate;
     if (taskPayload.endDate) newTask.endDate = taskPayload.endDate;
     if (taskPayload.isLongTerm !== undefined) newTask.isLongTerm = taskPayload.isLongTerm;
@@ -819,6 +822,9 @@ export default function App() {
         createdAt: 'Hôm nay',
       };
       if (t.scheduledTime) taskObj.scheduledTime = t.scheduledTime;
+      if (t.endTime) taskObj.endTime = t.endTime;
+      if (t.durationMinutes !== undefined) taskObj.durationMinutes = t.durationMinutes;
+      if (t.color) taskObj.color = t.color;
       if (t.startDate) taskObj.startDate = t.startDate;
       if (t.endDate) taskObj.endDate = t.endDate;
       if (t.isLongTerm !== undefined) taskObj.isLongTerm = t.isLongTerm;
